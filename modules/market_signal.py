@@ -11,39 +11,32 @@
 生产级信号系统不在本仓库范围内。
 """
 
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from modules.signal_provider import get_default_provider, SignalProvider
 
-# 全局provider实例（懒加载）
-_provider: SignalProvider = None
-
-
 def _get_provider() -> SignalProvider:
-    """获取全局provider实例（懒加载）"""
-    global _provider
-    if _provider is None:
-        _provider = get_default_provider()
-    return _provider
+    """每次调用创建 provider，避免共享可变降级状态。"""
+    return get_default_provider()
 
 
 def get_all_signals() -> dict:
     """
-    返回所有信号的当前状态
+    返回结构化的信号结果
 
     返回格式：
     {
-        "cold_fut_rb": {
-            "zh": "冷轧-螺纹价差观察",
-            "direction": "观望/价差偏高...",
-            "triggered": bool,
-            "confidence": "高/中/低",
-            "probability": float,
-            "z": float,
-            "date": "YYYY-MM-DD",
-            "current_spread": float,
-            "roll_mean": float,
-            "reasons": [str, ...],
-        },
-        ...
+        "source": str,
+        "degraded": bool,
+        "error_code": str,
+        "fallback_reason": str,
+        "as_of": str,
+        "signals": {"cold_fut_rb": {...}, ...},
     }
     """
     return _get_provider().get_all_signals()
@@ -51,7 +44,7 @@ def get_all_signals() -> dict:
 
 def get_price_chart_data() -> dict:
     """
-    返回价格走势图表数据（最近180个交易日）
+    返回价格走势图表数据（最近180个数据点）
 
     返回格式：
     {
@@ -65,10 +58,18 @@ def get_price_chart_data() -> dict:
     return _get_provider().get_price_chart_data()
 
 
-def get_provider_info() -> dict:
-    """返回当前信号提供者的信息（用于UI展示）"""
+def get_provider_info(bundle: dict = None) -> dict:
+    """返回配置信息；传入 bundle 时返回该次调用的降级状态。"""
     provider = _get_provider()
+    if bundle is None:
+        bundle = provider.get_all_signals()
     return {
         "name": provider.provider_name,
-        "is_demo": provider.is_demo,
+        "is_demo": bool(bundle.get("is_demo", provider.is_demo)),
+        "signals_source": bundle.get("source", getattr(provider, "signals_source", provider.provider_name)),
+        "chart_source": getattr(provider, "chart_source", provider.provider_name),
+        "fallback_reason": bundle.get("fallback_reason", ""),
+        "as_of": bundle.get("as_of", getattr(provider, "as_of", "N/A")),
+        "degraded": bool(bundle.get("degraded", False)),
+        "error_code": bundle.get("error_code", ""),
     }

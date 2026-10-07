@@ -1,6 +1,6 @@
 """
 PayPal结算模块 - 大宗商品贸易新客户信任建立期的支付结算
-用PayPal沙箱API实现：生成发票、发送付款链接、查询付款状态、自动触发后续流程
+用PayPal沙箱API实现：生成发票、发送付款链接、查询付款状态、生成后续流程通知内容
 
 核心场景（信任建立期的小额支付）：
 1. 样品费支付 - 新客户索要样品，自动生成PayPal样品费发票
@@ -19,26 +19,112 @@ PayPal API使用的是沙箱环境（Sandbox），所有交易都是虚拟的，
   不构成支付保障承诺。具体保障范围以PayPal官方条款为准。
 """
 
-import os
+import time
 import uuid
+import logging
 import requests
 from datetime import datetime
-from pathlib import Path
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 
-# 环境变量（可选）
-try:
-    from dotenv import load_dotenv
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
-    load_dotenv(PROJECT_ROOT / ".env")
-except ImportError:
-    pass
+from modules.config import get_paypal_config, load_config
+
+load_config()
 
 # PayPal沙箱API端点
 PAYPAL_SANDBOX_API = "https://api-m.sandbox.paypal.com"
 
-# 内存存储（演示用，实际项目应使用数据库或session存储）
-_invoice_store = {}
+CN_TZ = ZoneInfo("Asia/Shanghai")
+INVOICE_STORE_LIMIT = 10
+
+logger = logging.getLogger(__name__)
+
+# 非Streamlit环境（测试/脚本）下的全局回退存储。
+_GLOBAL_INVOICE_STORE = {}
+_PAYPAL_TOKEN_CACHE = {"token": "", "expires_at": 0.0}
+
+PAYMENT_TYPE_META = {
+    "sample_fee": {
+        "zh": "样品费",
+        "en": "Sample Fee",
+        "description": "Sample fee for commodity sample and delivery.",
+    },
+    "trial_order": {
+        "zh": "小额试单",
+        "en": "Trial Order Payment",
+        "description": "Small trial order payment through PayPal invoicing.",
+    },
+    "deposit": {
+        "zh": "诚意保证金",
+        "en": "Good Faith Deposit",
+        "description": "Good faith deposit for a larger commodity order.",
+    },
+    "service_fee": {
+        "zh": "跨境服务费",
+        "en": "Cross-border Service Fee",
+        "description": "Cross-border inspection, logistics, or consulting service fee.",
+    },
+}
+
+
+def get_payment_type_meta(payment_type: str) -> dict:
+    return PAYMENT_TYPE_META.get(payment_type, PAYMENT_TYPE_META["sample_fee"])
+
+
+def format_amount(value, currency: str = "") -> str:
+    """统一金额显示格式。"""
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        amount = 0.0
+    prefix = f"{currency} " if currency else ""
+    return f"{prefix}{amount:.2f}"
+
+
+def _is_streamlit_runtime() -> bool:
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+
+def get_invoice_store() -> dict:
+    """Demo发票存储：Streamlit按session隔离，非Streamlit回退到全局。"""
+    if _is_streamlit_runtime():
+        import streamlit as st
+        if "_demo_invoice_store" not in st.session_state:
+            st.session_state["_demo_invoice_store"] = {}
+        return st.session_state["_demo_invoice_store"]
+    return _GLOBAL_INVOICE_STORE
+
+
+def clear_invoices_demo() -> None:
+    get_invoice_store().clear()
+
+
+def _store_invoice(invoice: dict) -> None:
+    store = get_invoice_store()
+    store[invoice["invoice_id"]] = invoice
+    while len(store) > INVOICE_STORE_LIMIT:
+        oldest_key = next(iter(store))
+        store.pop(oldest_key, None)
+
+
+def _request_with_retry(method: str, url: str, **kwargs):
+    """PayPal请求重试：429时退避1秒重试一次。"""
+    last_response = None
+    for attempt in range(2):
+        response = requests.request(method, url, **kwargs)
+        last_response = response
+        if response.status_code == 429 and attempt == 0:
+            time.sleep(1)
+            continue
+        response.raise_for_status()
+        return response
+    if last_response is not None:
+        last_response.raise_for_status()
+    raise RuntimeError("PayPal请求未返回响应")
 
 
 # ============================================================
@@ -55,12 +141,12 @@ def get_merchant_email() -> str:
     获取PayPal商家邮箱（必须是沙箱账号中已验证的邮箱）
     从环境变量 PAYPAL_MERCHANT_EMAIL 读取，未配置则返回空字符串
     """
-    return os.getenv("PAYPAL_MERCHANT_EMAIL", "")
+    return get_paypal_config()["merchant_email"]
 
 
 def get_merchant_name() -> str:
     """获取商家名称，从环境变量 PAYPAL_MERCHANT_NAME 读取，有默认值"""
-    return os.getenv("PAYPAL_MERCHANT_NAME", "TradePilot AI")
+    return get_paypal_config()["merchant_name"]
 
 
 # ============================================================
@@ -72,25 +158,36 @@ def get_paypal_access_token() -> str:
     获取PayPal API访问令牌（OAuth2 Client Credentials）
     需要环境变量：PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET
     """
-    client_id = os.getenv("PAYPAL_CLIENT_ID", "")
-    client_secret = os.getenv("PAYPAL_CLIENT_SECRET", "")
+    now = time.time()
+    cached_token = _PAYPAL_TOKEN_CACHE.get("token", "")
+    if cached_token and _PAYPAL_TOKEN_CACHE.get("expires_at", 0) > now + 30:
+        return cached_token
 
-    if not client_id or not client_secret:
+    if not is_paypal_configured():
         return ""
+
+    cfg = get_paypal_config()
+    client_id = cfg["client_id"]
+    client_secret = cfg["client_secret"]
 
     try:
         auth = (client_id, client_secret)
         data = {"grant_type": "client_credentials"}
-        response = requests.post(
+        response = _request_with_retry(
+            "POST",
             f"{PAYPAL_SANDBOX_API}/v1/oauth2/token",
             auth=auth,
             data=data,
             timeout=10,
         )
-        response.raise_for_status()
-        return response.json()["access_token"]
+        token_data = response.json()
+        token = token_data["access_token"]
+        expires_in = int(token_data.get("expires_in", 300))
+        _PAYPAL_TOKEN_CACHE["token"] = token
+        _PAYPAL_TOKEN_CACHE["expires_at"] = now + expires_in
+        return token
     except Exception as e:
-        print(f"获取PayPal令牌失败: {e}")
+        logger.warning("获取PayPal令牌失败: %s", e)
         return ""
 
 
@@ -99,11 +196,9 @@ def is_paypal_configured() -> bool:
     检查PayPal API是否已完整配置
     需要：CLIENT_ID、CLIENT_SECRET、MERCHANT_EMAIL
     """
-    return bool(
-        os.getenv("PAYPAL_CLIENT_ID")
-        and os.getenv("PAYPAL_CLIENT_SECRET")
-        and os.getenv("PAYPAL_MERCHANT_EMAIL")
-    )
+    from modules.config import is_paypal_config_valid
+
+    return is_paypal_config_valid()
 
 
 # ============================================================
@@ -116,6 +211,8 @@ def create_invoice_api(
     items: list,
     note: str = "",
     currency: str = "USD",
+    contract_id: str = "",
+    payment_type: str = "",
 ) -> dict:
     """
     调用PayPal API创建发票（草稿状态）
@@ -143,6 +240,7 @@ def create_invoice_api(
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}",
             "Prefer": "return=representation",
+            "PayPal-Request-Id": str(uuid.uuid4()),
         }
 
         # 构造发票明细
@@ -159,6 +257,7 @@ def create_invoice_api(
 
             invoice_items.append({
                 "name": item["name"],
+                "description": item.get("description", "TradePilot AI demo invoice"),
                 "quantity": quantity_str,
                 "unit_amount": {
                     "currency_code": currency,
@@ -166,14 +265,17 @@ def create_invoice_api(
                 },
             })
 
-        invoice_number = f"TP-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        invoice_number = f"TP-{datetime.now(CN_TZ).strftime('%Y%m%d%H%M%S')}"
+        detail = {
+            "currency_code": currency,
+            "note": note,
+            "invoice_number": invoice_number,
+        }
+        if contract_id:
+            detail["reference"] = contract_id
 
         payload = {
-            "detail": {
-                "currency_code": currency,
-                "note": note,
-                "invoice_number": invoice_number,
-            },
+            "detail": detail,
             # 【修复2】使用环境变量配置的真实沙箱商家邮箱，不硬编码
             "invoicer": {
                 "name": {"full_name": get_merchant_name()},
@@ -192,21 +294,21 @@ def create_invoice_api(
             # 如果传入amount，PayPal会进行校验，可能因计算方式差异返回 calculation_error。
         }
 
-        response = requests.post(
+        response = _request_with_retry(
+            "POST",
             f"{PAYPAL_SANDBOX_API}/v2/invoicing/invoices",
             headers=headers,
             json=payload,
             timeout=15,
         )
-        response.raise_for_status()
 
         # 解析响应（因为设置了 return=representation，这里应该有完整JSON body）
         resp_data = {}
         if response.content:
             try:
                 resp_data = response.json()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("解析PayPal创建发票响应失败: %s", exc)
 
         invoice_id = resp_data.get("id", "")
         # 【修复6】从响应中读取 recipient_view_url（买家付款页面URL），不使用 Location header
@@ -234,7 +336,9 @@ def create_invoice_api(
             "buyer_name": buyer_name,
             "items": items,
             "note": note,
-            "created_at": datetime.now().isoformat(),
+            "contract_id": contract_id,
+            "payment_type": payment_type,
+            "created_at": datetime.now(CN_TZ).isoformat(),
         }
 
     except requests.exceptions.HTTPError as e:
@@ -262,14 +366,15 @@ def send_invoice_api(invoice_id: str) -> dict:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}",
+            "PayPal-Request-Id": str(uuid.uuid4()),
         }
-        response = requests.post(
+        response = _request_with_retry(
+            "POST",
             f"{PAYPAL_SANDBOX_API}/v2/invoicing/invoices/{invoice_id}/send",
             headers=headers,
             json={"send_to_invoicer": True},
             timeout=10,
         )
-        response.raise_for_status()
         return {"success": True}
     except requests.exceptions.HTTPError as e:
         error_detail = ""
@@ -280,6 +385,32 @@ def send_invoice_api(invoice_id: str) -> dict:
         return {"success": False, "error": f"发送发票HTTP错误: {error_detail}"}
     except Exception as e:
         return {"success": False, "error": f"发送PayPal发票失败: {str(e)}"}
+
+
+def _extract_payment_info(data: dict):
+    """兼容 PayPal 官方 payments 对象和旧版 payments 数组。"""
+    payments = data.get("payments") or {}
+    paid_amount = ""
+    if isinstance(payments, dict):
+        transactions = payments.get("transactions") or []
+        if not isinstance(transactions, list):
+            transactions = []
+        first = transactions[0] if transactions else payments
+        paid_amount_obj = payments.get("paid_amount") or {}
+        if isinstance(paid_amount_obj, dict):
+            paid_amount = str(paid_amount_obj.get("value", "") or "")
+    else:
+        payment_list = payments if isinstance(payments, list) else []
+        first = payment_list[0] if payment_list else {}
+        amount_obj = first.get("amount") if isinstance(first, dict) else {}
+        if isinstance(amount_obj, dict):
+            paid_amount = str(amount_obj.get("value", "") or "")
+
+    if not isinstance(first, dict):
+        first = {}
+    paid_at = first.get("payment_date") or first.get("date") or ""
+    transaction_id = first.get("payment_id") or first.get("transaction_id") or ""
+    return str(paid_at), str(transaction_id), paid_amount
 
 
 def get_invoice_status_api(invoice_id: str) -> dict:
@@ -293,38 +424,35 @@ def get_invoice_status_api(invoice_id: str) -> dict:
 
     try:
         headers = {"Authorization": f"Bearer {access_token}"}
-        response = requests.get(
+        response = _request_with_retry(
+            "GET",
             f"{PAYPAL_SANDBOX_API}/v2/invoicing/invoices/{invoice_id}",
             headers=headers,
             timeout=10,
         )
-        response.raise_for_status()
         data = response.json()
 
-        payments = data.get("payments") or []
-        if isinstance(payments, dict):
-            payments = [payments]
-        first_payment = payments[0] if isinstance(payments, list) and payments else {}
-        if not isinstance(first_payment, dict):
-            first_payment = {}
-
-        paid_at = first_payment.get("date") or first_payment.get("payment_date") or ""
-        transaction_id = (
-            first_payment.get("payment_id")
-            or first_payment.get("transaction_id")
-            or ""
-        )
+        paid_at, transaction_id, paid_amount = _extract_payment_info(data)
+        amount_info = data.get("amount")
+        amount_info = amount_info if isinstance(amount_info, dict) else {}
+        amount_value = paid_amount or amount_info.get("value", "0")
+        detail_info = data.get("detail")
+        detail_info = detail_info if isinstance(detail_info, dict) else {}
+        metadata = detail_info.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
 
         return {
             "success": True,
             "mode": "LIVE_SANDBOX",
             "status": data.get("status", "UNKNOWN"),
-            "amount": data.get("amount", {}).get("value", "0"),
-            "currency": data.get("amount", {}).get("currency_code", "USD"),
-            "invoice_number": data.get("detail", {}).get("invoice_number", ""),
-            "recipient_view_url": data.get("detail", {}).get("metadata", {}).get("recipient_view_url", ""),
+            "amount": amount_value,
+            "total": amount_value,
+            "currency": amount_info.get("currency_code", "USD"),
+            "invoice_number": detail_info.get("invoice_number", ""),
+            "recipient_view_url": metadata.get("recipient_view_url", ""),
             "paid_at": paid_at,
             "transaction_id": transaction_id,
+            "paid_amount": paid_amount,
         }
     except Exception as e:
         return {"success": False, "error": f"查询PayPal发票状态失败: {str(e)}"}
@@ -355,8 +483,9 @@ def create_invoice_demo(
 
     返回：完整的发票信息（含模拟付款链接）
     """
+    store = get_invoice_store()
     invoice_id = f"INV-{uuid.uuid4().hex[:8].upper()}"
-    invoice_number = f"TP-{datetime.now().strftime('%Y%m%d')}-{len(_invoice_store) + 1:04d}"
+    invoice_number = f"TP-{datetime.now(CN_TZ).strftime('%Y%m%d')}-{len(store) + 1:04d}"
 
     # 支付类型对应的商品描述
     type_descriptions = {
@@ -367,7 +496,11 @@ def create_invoice_demo(
         "trial_order": {
             "name": "小额试单 - 安全支付通道",
             # 【修复表述】去掉"买家保护机制"，改为"安全支付通道+可追溯"
-            "note": "新客户首次合作小额试单，使用PayPal安全支付通道，交易可追溯，降低首次合作信任门槛。试单成功后可转为大额公对公交易。注意：B2B大宗商品交易可能不适用PayPal标准买家保护，具体以PayPal条款为准。",
+            "note": (
+                "新客户首次合作小额试单，使用PayPal安全支付通道，交易可追溯，"
+                "降低首次合作信任门槛。试单成功后可转为大额公对公交易。注意："
+                "B2B大宗商品交易可能不适用PayPal标准买家保护，具体以PayPal条款为准。"
+            ),
         },
         "deposit": {
             "name": "诚意保证金",
@@ -380,6 +513,7 @@ def create_invoice_demo(
     }
 
     type_info = type_descriptions.get(payment_type, type_descriptions["sample_fee"])
+    type_meta = get_payment_type_meta(payment_type)
 
     invoice = {
         "success": True,
@@ -389,13 +523,15 @@ def create_invoice_demo(
         "status": "DRAFT",  # DRAFT -> SENT -> PAID
         "payment_type": payment_type,
         "payment_type_name": type_info["name"],
+        "payment_type_name_en": type_meta["en"],
         "buyer_name": buyer_name,
         "buyer_email": buyer_email,
         "amount": float(_to_decimal(amount)),
+        "total": float(_to_decimal(amount)),
         "currency": currency,
         "note": type_info["note"],
         "contract_id": contract_id,
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(CN_TZ).isoformat(),
         "sent_at": None,
         "paid_at": None,
         "payment_method": None,
@@ -405,8 +541,7 @@ def create_invoice_demo(
         "recipient_view_url": f"https://www.sandbox.paypal.com/invoice/payerView/details/{invoice_id}",
     }
 
-    # 存入内存
-    _invoice_store[invoice_id] = invoice
+    _store_invoice(invoice)
     return invoice
 
 
@@ -414,19 +549,20 @@ def send_invoice_demo(invoice_id: str) -> dict:
     """
     演示模式：发送发票（状态从DRAFT变为SENT，生成付款链接）
     """
-    if invoice_id not in _invoice_store:
+    store = get_invoice_store()
+    if invoice_id not in store:
         return {"success": False, "error": "发票不存在"}
 
-    invoice = _invoice_store[invoice_id]
+    invoice = store[invoice_id]
     invoice["status"] = "SENT"
-    invoice["sent_at"] = datetime.now().isoformat()
+    invoice["sent_at"] = datetime.now(CN_TZ).isoformat()
 
     return {
         "success": True,
         "invoice_id": invoice_id,
         "status": "SENT",
         "payment_url": invoice["payment_url"],
-        "message": f"发票已发送至 {invoice['buyer_email']}，买家可通过付款链接完成支付。",
+        "message": f"演示：发票状态已置为SENT（未实际发送至 {invoice['buyer_email']}）。",
     }
 
 
@@ -435,15 +571,16 @@ def simulate_payment_demo(invoice_id: str, payment_method: str = "paypal_balance
     演示模式：模拟买家完成付款（状态从SENT变为PAID）
     实际项目中，这一步由买家在PayPal页面完成付款，系统通过Webhook或轮询监听状态变化。
     """
-    if invoice_id not in _invoice_store:
+    store = get_invoice_store()
+    if invoice_id not in store:
         return {"success": False, "error": "发票不存在"}
 
-    invoice = _invoice_store[invoice_id]
+    invoice = store[invoice_id]
     if invoice["status"] != "SENT":
         return {"success": False, "error": f"发票当前状态为{invoice['status']}，无法付款"}
 
     invoice["status"] = "PAID"
-    invoice["paid_at"] = datetime.now().isoformat()
+    invoice["paid_at"] = datetime.now(CN_TZ).isoformat()
     invoice["payment_method"] = payment_method
     invoice["transaction_id"] = f"TXN-{uuid.uuid4().hex[:12].upper()}"
 
@@ -456,26 +593,26 @@ def simulate_payment_demo(invoice_id: str, payment_method: str = "paypal_balance
         "amount": invoice["amount"],
         "currency": invoice["currency"],
         "message": f"付款成功！收到 {invoice['currency']} {invoice['amount']:.2f}，交易号 {invoice['transaction_id']}。",
-        # 付款成功后应触发的后续动作（实际项目中自动执行）
+        # 生产环境中的后续动作（演示模式只返回计划，不执行）
         "next_actions": [
-            "自动发送到账确认通知给买家",
-            "通知仓库安排备货/发货",
-            "更新交易档案状态",
-            "如果是样品费：触发样品发货流程",
-            "如果是试单：触发试单发货流程，完成后引导转为大额公对公交易",
-            "如果是保证金：记录保证金，后续大额货款中自动抵扣",
+            "生产环境将自动发送到账确认通知给买家",
+            "生产环境将通知仓库安排备货/发货",
+            "生产环境将更新交易档案状态",
+            "如果是样品费：生产环境将触发样品发货流程",
+            "如果是试单：生产环境将触发试单发货流程，完成后引导转为大额公对公交易",
+            "如果是保证金：生产环境将记录保证金，后续大额货款中自动抵扣",
         ],
     }
 
 
 def get_invoice_demo(invoice_id: str) -> dict:
     """获取演示发票详情"""
-    return _invoice_store.get(invoice_id, {})
+    return get_invoice_store().get(invoice_id, {})
 
 
 def list_invoices_demo() -> list:
     """列出所有演示发票"""
-    return list(_invoice_store.values())
+    return list(get_invoice_store().values())
 
 
 # ============================================================
@@ -490,6 +627,7 @@ def create_and_send_invoice(
     currency: str = "USD",
     contract_id: str = "",
     use_api: bool = True,
+    allow_demo_fallback: bool = False,
 ) -> dict:
     """
     创建并发送发票（主入口）
@@ -505,41 +643,68 @@ def create_and_send_invoice(
         currency: 货币
         contract_id: 关联合同编号
         use_api: True=尝试API模式（失败返回错误），False=强制演示模式
+        allow_demo_fallback: use_api=True但未配置时，是否允许回退演示模式
 
     返回：发票信息（含付款链接），失败返回 {"success": False, "error": "..."}
     """
-    if use_api:
-        if not is_paypal_configured():
+    if use_api and not is_paypal_configured():
+        if allow_demo_fallback:
+            use_api = False
+        else:
             return {
                 "success": False,
-                "error": "PayPal API未完整配置。需要设置 PAYPAL_CLIENT_ID、PAYPAL_CLIENT_SECRET、PAYPAL_MERCHANT_EMAIL 环境变量。如需体验演示流程，请选择演示模式。",
+                "error": (
+                    "PayPal API未完整配置。需要设置 PAYPAL_CLIENT_ID、"
+                    "PAYPAL_CLIENT_SECRET、PAYPAL_MERCHANT_EMAIL 环境变量。"
+                    "如需体验演示流程，请显式选择演示模式或设置 "
+                    "allow_demo_fallback=True。"
+                ),
                 "mode": "NOT_CONFIGURED",
             }
 
+    if use_api:
         # API模式：创建发票
+        type_meta = get_payment_type_meta(payment_type)
         items = [{
-            "name": f"{payment_type} - TradePilot AI",
+            "name": type_meta["en"],
+            "description": type_meta["description"],
             "quantity": "1",  # 【修复3】字符串
             "unit_price": float(_to_decimal(amount)),
         }]
-        invoice = create_invoice_api(buyer_email, buyer_name, items, currency=currency)
+        invoice = create_invoice_api(
+            buyer_email,
+            buyer_name,
+            items,
+            note=type_meta["description"],
+            currency=currency,
+            contract_id=contract_id,
+            payment_type=payment_type,
+        )
 
         if not invoice.get("success"):
             # 【修复8】API失败直接返回错误，不静默回退演示模式
             return invoice
+
+        # 先持久化草稿，再发送；发送失败时仍可按 invoice_id 重试。
+        invoice["status"] = "DRAFT"
+        _store_invoice(invoice)
 
         # 【修复5】检查发送结果，失败则返回错误
         send_result = send_invoice_api(invoice["invoice_id"])
         if not send_result.get("success"):
             return {
                 "success": False,
-                "error": f"发票创建成功但发送失败: {send_result.get('error', '未知错误')}",
+                "error": "发送失败，可重试",
+                "detail": send_result.get("error", "未知错误"),
                 "invoice_id": invoice["invoice_id"],
+                "status": "DRAFT",
                 "mode": "LIVE_SANDBOX",
+                "retryable": True,
             }
 
         invoice["status"] = "SENT"
-        invoice["sent_at"] = datetime.now().isoformat()
+        invoice["sent_at"] = datetime.now(CN_TZ).isoformat()
+        _store_invoice(invoice)
         return invoice
 
     # 演示模式（用户显式选择 use_api=False）
@@ -550,12 +715,63 @@ def create_and_send_invoice(
     return invoice
 
 
-def check_payment_status(invoice_id: str, use_api: bool = True) -> dict:
+def retry_send_invoice(invoice_id: str, use_api: bool = True) -> dict:
+    """仅重试发送草稿发票，不重新创建发票。"""
+    invoice = get_invoice_demo(invoice_id)
+    if not invoice:
+        return {"success": False, "error": "发票不存在", "invoice_id": invoice_id}
+
+    if use_api:
+        if not is_paypal_configured():
+            return {
+                "success": False,
+                "status": "DRAFT",
+                "invoice_id": invoice_id,
+                "error": "PayPal API未完整配置",
+                "mode": "NOT_CONFIGURED",
+            }
+        send_result = send_invoice_api(invoice_id)
+        if not send_result.get("success"):
+            return {
+                "success": False,
+                "status": "DRAFT",
+                "invoice_id": invoice_id,
+                "error": "发送失败，可重试",
+                "detail": send_result.get("error", "未知错误"),
+                "mode": "LIVE_SANDBOX",
+                "retryable": True,
+            }
+        invoice["status"] = "SENT"
+        invoice["sent_at"] = datetime.now(CN_TZ).isoformat()
+        _store_invoice(invoice)
+        return invoice
+
+    result = send_invoice_demo(invoice_id)
+    if not result.get("success"):
+        return result
+    invoice["status"] = "SENT"
+    invoice["send_result"] = result
+    _store_invoice(invoice)
+    return invoice
+
+
+def check_payment_status(
+    invoice_id: str,
+    use_api: bool = True,
+    allow_demo_fallback: bool = False,
+) -> dict:
     """
     查询付款状态（主入口）
 
     【修复7】API模式真实查询PayPal发票状态，支持刷新按钮调用
     """
+    if use_api and not is_paypal_configured() and not allow_demo_fallback:
+        return {
+            "success": False,
+            "status": "NOT_CONFIGURED",
+            "error": "PayPal API未完整配置，未查询演示存储",
+        }
+
     if use_api and is_paypal_configured():
         status = get_invoice_status_api(invoice_id)
         if status.get("success"):
@@ -571,6 +787,7 @@ def check_payment_status(invoice_id: str, use_api: bool = True) -> dict:
             "mode": "DEMO",
             "status": invoice["status"],
             "amount": invoice["amount"],
+            "total": invoice.get("total", invoice["amount"]),
             "currency": invoice["currency"],
             "paid_at": invoice.get("paid_at"),
             "transaction_id": invoice.get("transaction_id"),
@@ -615,18 +832,21 @@ if __name__ == "__main__":
     print(f"   状态: {status['status']}")
     print(f"   付款时间: {status.get('paid_at', 'N/A')}")
 
-    # 4. 测试API未配置时的错误返回（不静默回退）
+    # 4. 测试API未配置时的错误返回（不静默回退；有真实配置时跳过，避免测试打外网）
     print("\n4. 测试API模式（未配置时应返回错误，不回退演示）...")
-    result = create_and_send_invoice(
-        payment_type="sample_fee",
-        buyer_name="测试客户",
-        buyer_email="test@example.com",
-        amount=100.00,
-        use_api=True,  # 尝试API模式
-    )
-    if not result.get("success"):
-        print(f"   ✅ 正确返回错误（不静默回退）: {result['error'][:60]}...")
+    if is_paypal_configured():
+        print("   跳过：当前环境配置了PayPal凭据，单元测试不调用真实API。")
     else:
-        print(f"   ⚠️ API模式意外成功: {result}")
+        result = create_and_send_invoice(
+            payment_type="sample_fee",
+            buyer_name="测试客户",
+            buyer_email="test@example.com",
+            amount=100.00,
+            use_api=True,  # 未配置时应返回NOT_CONFIGURED
+        )
+        if not result.get("success"):
+            print(f"   ✅ 正确返回错误（不静默回退）: {result['error'][:60]}...")
+        else:
+            print(f"   ⚠️ API模式意外成功: {result}")
 
     print("\n=== 测试完成 ===")

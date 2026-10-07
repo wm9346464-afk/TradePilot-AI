@@ -15,6 +15,11 @@
 """
 
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+
+CN_TZ = ZoneInfo("Asia/Shanghai")
+DEMO_NOTICE = "【演示文案，未实际发生。】\n\n"
 
 
 # ============================================================
@@ -28,7 +33,7 @@ NOTIFICATION_TEMPLATES = {
 
 您好！
 
-我们的AI行情监测系统检测到 {product} 出现价差收敛信号，具体信息如下：
+我们的市场观察/规则信号演示系统检测到 {product} 出现价差观察信号，具体信息如下：
 
 📊 信号详情：
 - 信号类型：{signal_name}
@@ -41,25 +46,27 @@ NOTIFICATION_TEMPLATES = {
 📝 信号说明：
 {reasons}
 
-💡 操作建议：
-当前价差偏离历史均值，存在向均值回归的可能性。建议您结合自身采购计划和风险承受能力，考虑是否把握此次交易机会。
+💡 市场观察（仅供参考）：
+当前价差偏离历史均值，仅供市场观察，不构成投资建议，也不构成交易邀约。
 
 如需了解更多详情或希望我们的业务团队与您联系，请随时回复本邮件。
 
 祝商祺！
 
+本通知由演示系统生成，不构成投资建议。
+
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
     "contract_ready": {
-        "subject": "【合同通知】合同{contract_id}已通过AI审查，请确认",
+        "subject": "【合同通知】合同{contract_id} AI审查完成，请确认",
         "body": """尊敬的{customer_name}：
 
 您好！
 
-您的合同（编号：{contract_id}）已通过我们的AI智能合同审查系统审查。
+您的合同（编号：{contract_id}）已提交AI智能合同审查系统，以下为待确认的审查结果：
 
 📋 审查结果：
 - 问题总数：{total_issues} 个
@@ -78,7 +85,7 @@ AI智能贸易助手
 祝商祺！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
@@ -88,7 +95,7 @@ AI智能贸易助手
 
 您好！
 
-您的{payment_type_name}已生成，请通过以下链接完成支付：
+请确认您的{payment_type_name}信息，并通过以下链接完成支付：
 
 💰 付款信息：
 - 发票编号：{invoice_number}
@@ -104,22 +111,22 @@ AI智能贸易助手
 📝 说明：
 {note}
 
-支付完成后，系统将自动确认到账并触发后续流程。如有任何支付问题，请随时联系我们。
+生产环境中，支付完成后系统将自动确认到账并触发后续流程；当前演示模式不会实际发送通知或执行后续动作。如有任何支付问题，请随时联系我们。
 
 祝商祺！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
     "payment_confirmed": {
-        "subject": "【到账确认】已收到您的付款 {currency} {amount}，感谢！",
+        "subject": "【到账确认】如确认收到您的付款 {currency} {amount}，请核对",
         "body": """尊敬的{customer_name}：
 
 您好！
 
-我们已收到您的付款，详情如下：
+如确认收到您的付款，详情如下：
 
 ✅ 付款确认：
 - 发票编号：{invoice_number}
@@ -128,7 +135,7 @@ AI智能贸易助手
 - 交易号：{transaction_id}
 - 到账时间：{paid_at}
 
-🎉 后续流程已自动启动：
+演示：后续流程将在生产环境中自动触发
 {next_actions}
 
 我们将尽快为您安排后续事宜。如需了解进度，请随时联系我们。
@@ -136,17 +143,17 @@ AI智能贸易助手
 感谢您的信任与支持！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
     "shipping_notice": {
-        "subject": "【发货通知】您的货物已发出，请注意查收",
+        "subject": "【发货通知】货物计划发出，请注意查收",
         "body": """尊敬的{customer_name}：
 
 您好！
 
-您的货物已发出，物流信息如下：
+您的货物计划发出，物流信息如下：
 
 🚚 发货信息：
 - 合同编号：{contract_id}
@@ -170,25 +177,25 @@ AI智能贸易助手
 祝商祺！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
     "delivery_confirmation": {
-        "subject": "【收货提醒】请确认货物已收到并反馈",
+        "subject": "【收货提醒】请确认货物是否收到并反馈",
         "body": """尊敬的{customer_name}：
 
 您好！
 
-根据物流信息，您的货物（合同编号：{contract_id}）预计已于 {estimated_arrival} 送达。
+根据演示物流信息，您的货物（合同编号：{contract_id}）预计送达时间为 {estimated_arrival}。
 
 📦 请您确认：
-1. 货物是否已收到？
+1. 货物是否收到？
 2. 数量是否正确？
 3. 外观是否完好？
 4. 质量是否符合要求？
 
-如货物已收到且无异议，请回复"确认收货"，我们将完成交易闭环。
+如货物收到且无异议，请回复"确认收货"，我们将按流程完成交易闭环。
 如有任何问题，请及时联系我们，我们将竭诚为您解决。
 
 💡 温馨提示：
@@ -197,17 +204,17 @@ AI智能贸易助手
 感谢您的配合！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 
     "after_sales": {
-        "subject": "【售后跟进】交易完成，感谢您的信任！",
+        "subject": "【售后跟进】交易流程完成后回访，感谢您的信任！",
         "body": """尊敬的{customer_name}：
 
 您好！
 
-您的订单（合同编号：{contract_id}）已完成全部交易流程。感谢您的信任与支持！
+本通知用于演示交易流程完成后的售后回访。感谢您的信任与支持！
 
 📊 本次交易回顾：
 - 产品：{product_name}
@@ -216,22 +223,25 @@ AI智能贸易助手
 - 交易完成日期：{completion_date}
 
 🔄 信任升级：
-本次交易的顺利完成，标志着我们双方已建立初步信任。后续合作中，您可以享受：
+交易流程完成后，双方可逐步建立信任。后续合作中，您可以享受：
 - 更大额度的公对公直接交易（无需PayPal担保）
 - 更优先的货源安排
 - 更灵活的付款条件
 - 专属客户经理服务
 
 📞 持续服务：
-我们的AI行情监测系统将持续为您提供市场动态。如有采购需求，请随时联系我们。
+我们的市场观察/规则信号演示系统将持续为您提供市场动态；相关内容仅供参考，不构成投资建议。如有采购需求，请随时联系我们。
 
 期待与您的长期合作！
 
 {company_name}
-AI智能贸易助手
+贸易助手
 {date}""",
     },
 }
+
+for _template in NOTIFICATION_TEMPLATES.values():
+    _template["body"] = DEMO_NOTICE + _template["body"]
 
 
 # ============================================================
@@ -264,7 +274,7 @@ def generate_notification(notification_type: str, **kwargs) -> dict:
     # 默认变量
     defaults = {
         "company_name": "TradePilot AI 贸易有限公司",
-        "date": datetime.now().strftime("%Y年%m月%d日"),
+        "date": datetime.now(CN_TZ).strftime("%Y年%m月%d日"),
         "customer_name": "尊敬的客户",
     }
     defaults.update(kwargs)
@@ -310,7 +320,7 @@ def generate_trade_workflow_notifications(
 
     返回从合同到售后的7个通知，按时间顺序排列
     """
-    base_date = datetime.now()
+    base_date = datetime.now(CN_TZ)
     notifications = []
 
     # 0. 行情提醒（贸易流程的起点，建立专业信任）
@@ -324,7 +334,7 @@ def generate_trade_workflow_notifications(
         probability=60.0,
         confidence="高",
         z_value=1.5,
-        reasons="当前价差偏离历史均值，存在向均值回归的可能性。建议结合自身采购计划考虑是否把握此次交易机会。",
+        reasons="当前价差偏离历史均值，仅供市场观察，不构成投资建议。",
         date=base_date.strftime("%Y年%m月%d日"),
     ))
 
@@ -352,8 +362,12 @@ def generate_trade_workflow_notifications(
         amount=amount,
         invoice_number=f"TP-{base_date.strftime('%Y%m%d')}-0001",
         contract_id=contract_id,
-        payment_url="https://www.sandbox.paypal.com/invoice/payerView/details/INV-DEMO1234",
-        note="这是您首次合作的小额试单，使用PayPal安全支付通道，交易可追溯，降低首次合作信任门槛。试单成功后可转为大额公对公交易。注意：B2B大宗商品交易可能不适用PayPal标准买家保护，具体以PayPal条款为准。",
+        payment_url="https://www.sandbox.paypal.com/invoice/payerView/details/INV-DEMO1234（模拟链接，不可用）",
+        note=(
+            "这是您首次合作的小额试单，使用PayPal安全支付通道，交易可追溯，"
+            "降低首次合作信任门槛。试单成功后可转为大额公对公交易。注意："
+            "B2B大宗商品交易可能不适用PayPal标准买家保护，具体以PayPal条款为准。"
+        ),
         date=base_date.strftime("%Y年%m月%d日"),
     ))
 
@@ -368,7 +382,7 @@ def generate_trade_workflow_notifications(
         payment_type_name="小额试单支付",
         transaction_id="TXN-DEMO567890ABCD",
         paid_at=(base_date + timedelta(hours=2)).strftime("%Y年%m月%d日 %H:%M"),
-        next_actions="1. 已自动发送到账确认通知\n2. 已通知仓库安排备货\n3. 已更新交易档案状态\n4. 试单完成后将引导转为大额公对公交易",
+        next_actions="1. 生产环境将发送到账确认通知\n2. 生产环境将通知仓库安排备货\n3. 生产环境将更新交易档案状态\n4. 试单完成后将引导转为大额公对公交易",
         date=base_date.strftime("%Y年%m月%d日"),
     ))
 
@@ -384,7 +398,7 @@ def generate_trade_workflow_notifications(
         ship_date=ship_date.strftime("%Y年%m月%d日"),
         estimated_arrival=(ship_date + timedelta(days=3)).strftime("%Y年%m月%d日"),
         logistics_company="顺丰物流",
-        tracking_number="SF1234567890",
+        tracking_number="SF1234567890（示例单号）",
         quality_objection_days="7",
         date=ship_date.strftime("%Y年%m月%d日"),
     ))

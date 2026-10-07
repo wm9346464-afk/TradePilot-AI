@@ -47,5 +47,7 @@ htmlcov/
 .ipynb_checkpoints/
 
 # 项目临时文件
+codex_audit_*
 codex_review_*
+codex_fix_*
 *.log
