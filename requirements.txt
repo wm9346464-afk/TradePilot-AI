@@ -1,0 +1,10 @@
+# TradePilot AI - 大宗商品贸易新客户准入与信任建立智能体
+# 项目依赖清单
+# Python版本要求: Python 3.10+
+# 安装命令: pip install -r requirements.txt
+
+streamlit==1.50.0      # Web应用框架
+pandas==2.3.3          # 数据处理
+numpy==1.26.4           # 数值计算
+requests==2.32.5        # HTTP请求（PayPal API、大模型API）
+python-dotenv==1.0.1    # 环境变量管理（存储API密钥，可选但推荐）
