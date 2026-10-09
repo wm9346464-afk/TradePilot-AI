@@ -202,8 +202,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(f"### {_t('sidebar.system_status')}")
 
-    paypal_status = get_paypal_config_status()
-    llm_status = get_llm_config_status()
+    paypal_status = get_paypal_config_status(lang=st.session_state.get("lang", "zh"))
+    llm_status = get_llm_config_status(lang=st.session_state.get("lang", "zh"))
     paypal_class = "mode-live" if paypal_status["state"] == "usable" else "mode-demo"
     llm_class = "mode-live" if llm_status["state"] == "usable" else "mode-demo"
     st.markdown(
@@ -552,7 +552,7 @@ elif page == _t("sidebar.page_paypal"):
     st.title(_t("paypal.title"))
     st.markdown(_t("paypal.subtitle"))
 
-    paypal_status = get_paypal_config_status()
+    paypal_status = get_paypal_config_status(lang=st.session_state.get("lang", "zh"))
     if paypal_status["state"] == "usable":
         st.success(_t("paypal.config_usable"))
     elif paypal_status["state"] == "unverified":
@@ -643,6 +643,7 @@ elif page == _t("sidebar.page_paypal"):
                     retry_result = retry_send_invoice(
                         invoice_id,
                         use_api=st.session_state.get("last_invoice_use_api", True),
+                        lang=st.session_state.get("lang", "zh"),
                     )
                     st.session_state["last_invoice_result"] = retry_result
                     st.rerun()
@@ -703,7 +704,7 @@ elif page == _t("sidebar.page_paypal"):
                 st.warning(_t("paypal.no_invoice_warning"))
             else:
                 with st.spinner(_t("paypal.checking_status")):
-                    status = check_payment_status(invoice_id_to_pay, use_api=last_use_api)
+                    status = check_payment_status(invoice_id_to_pay, use_api=last_use_api, lang=st.session_state.get("lang", "zh"))
                 if status.get("success", False):
                     st.success(_t("paypal.current_status", status=status.get('status', 'UNKNOWN')))
                     if status.get("status") == "PAID":

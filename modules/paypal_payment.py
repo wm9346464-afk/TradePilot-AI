@@ -672,9 +672,15 @@ def create_and_send_invoice(
         if allow_demo_fallback:
             use_api = False
         else:
+            en = lang == "en"
             return {
                 "success": False,
                 "error": (
+                    "PayPal API not fully configured. Need to set PAYPAL_CLIENT_ID, "
+                    "PAYPAL_CLIENT_SECRET, PAYPAL_MERCHANT_EMAIL env vars. "
+                    "To experience demo flow, explicitly select demo mode or set "
+                    "allow_demo_fallback=True."
+                    if en else
                     "PayPal API未完整配置。需要设置 PAYPAL_CLIENT_ID、"
                     "PAYPAL_CLIENT_SECRET、PAYPAL_MERCHANT_EMAIL 环境变量。"
                     "如需体验演示流程，请显式选择演示模式或设置 "
@@ -713,10 +719,11 @@ def create_and_send_invoice(
         # 【修复5】检查发送结果，失败则返回错误
         send_result = send_invoice_api(invoice["invoice_id"])
         if not send_result.get("success"):
+            en = lang == "en"
             return {
                 "success": False,
-                "error": "发送失败，可重试",
-                "detail": send_result.get("error", "未知错误"),
+                "error": "Send failed, retryable" if en else "发送失败，可重试",
+                "detail": send_result.get("error", "Unknown error" if en else "未知错误"),
                 "invoice_id": invoice["invoice_id"],
                 "status": "DRAFT",
                 "mode": "LIVE_SANDBOX",
@@ -736,11 +743,12 @@ def create_and_send_invoice(
     return invoice
 
 
-def retry_send_invoice(invoice_id: str, use_api: bool = True) -> dict:
+def retry_send_invoice(invoice_id: str, use_api: bool = True, lang: str = "zh") -> dict:
     """仅重试发送草稿发票，不重新创建发票。"""
+    en = lang == "en"
     invoice = get_invoice_demo(invoice_id)
     if not invoice:
-        return {"success": False, "error": "发票不存在", "invoice_id": invoice_id}
+        return {"success": False, "error": "Invoice not found" if en else "发票不存在", "invoice_id": invoice_id}
 
     if use_api:
         if not is_paypal_configured():
@@ -748,7 +756,7 @@ def retry_send_invoice(invoice_id: str, use_api: bool = True) -> dict:
                 "success": False,
                 "status": "DRAFT",
                 "invoice_id": invoice_id,
-                "error": "PayPal API未完整配置",
+                "error": "PayPal API not fully configured" if en else "PayPal API未完整配置",
                 "mode": "NOT_CONFIGURED",
             }
         send_result = send_invoice_api(invoice_id)
@@ -757,8 +765,8 @@ def retry_send_invoice(invoice_id: str, use_api: bool = True) -> dict:
                 "success": False,
                 "status": "DRAFT",
                 "invoice_id": invoice_id,
-                "error": "发送失败，可重试",
-                "detail": send_result.get("error", "未知错误"),
+                "error": "Send failed, retryable" if en else "发送失败，可重试",
+                "detail": send_result.get("error", "Unknown error" if en else "未知错误"),
                 "mode": "LIVE_SANDBOX",
                 "retryable": True,
             }
@@ -780,17 +788,19 @@ def check_payment_status(
     invoice_id: str,
     use_api: bool = True,
     allow_demo_fallback: bool = False,
+    lang: str = "zh",
 ) -> dict:
     """
     查询付款状态（主入口）
 
     【修复7】API模式真实查询PayPal发票状态，支持刷新按钮调用
     """
+    en = lang == "en"
     if use_api and not is_paypal_configured() and not allow_demo_fallback:
         return {
             "success": False,
             "status": "NOT_CONFIGURED",
-            "error": "PayPal API未完整配置，未查询演示存储",
+            "error": "PayPal API not fully configured, demo store not queried" if en else "PayPal API未完整配置，未查询演示存储",
         }
 
     if use_api and is_paypal_configured():
@@ -814,7 +824,7 @@ def check_payment_status(
             "transaction_id": invoice.get("transaction_id"),
             "invoice_number": invoice.get("invoice_number"),
         }
-    return {"success": False, "status": "NOT_FOUND", "error": "发票不存在"}
+    return {"success": False, "status": "NOT_FOUND", "error": "Invoice not found" if en else "发票不存在"}
 
 
 # ============================================================

@@ -52,6 +52,13 @@ MODE_LABEL_MAP_EN = {
     "演示模式": "Demo Mode",
     "空": "Empty",
     "输入过长": "Input Too Long",
+    "基础规则检查": "Rule-only Check",
+    "演示模式（预设模拟结果，非真实AI审查）": "Demo Mode (preset mock results, not real AI)",
+    "AI完整审查（真实大模型）": "AI Full Review (real LLM)",
+    "基础规则检查（AI未配置，如需AI审查请配置LLM_API_KEY）": "Rule-only Check (AI not configured, configure LLM_API_KEY for AI review)",
+    "基础规则检查（AI调用失败，已降级为仅规则检查）": "Rule-only Check (AI call failed, degraded to rule-only)",
+    "AI完整审查（真实大模型，未发现额外问题）": "AI Full Review (real LLM, no extra issues found)",
+    "基础规则检查（AI审查未完成）": "Rule-only Check (AI review incomplete)",
 }
 SUMMARY_MAP_EN = {
     "请输入合同内容": "Please enter contract content",
@@ -776,8 +783,61 @@ def check_contract(
         for issue in result["issues"]:
             issue["type"] = TYPE_MAP_EN.get(issue.get("type", ""), issue.get("type", ""))
             issue["severity"] = SEVERITY_MAP_EN.get(issue.get("severity", ""), issue.get("severity", ""))
-        result["summary"] = SUMMARY_MAP_EN.get(result["summary"], result["summary"])
+        # Translate dynamic summary using regex patterns
+        s = result["summary"]
+        import re as _re
+        # Pattern: "发现 X 个问题，其中 Y 个高风险问题建议立即修改。"
+        m = _re.match(r"发现 (\d+) 个问题，其中 (\d+) 个高风险问题建议立即修改。(.*)", s)
+        if m:
+            extra = m.group(3)
+            extra_en = ""
+            if "AI返回的问题中有" in extra:
+                fm = _re.search(r"AI返回的问题中有(\d+)条因格式不符合要求已被过滤。", extra)
+                if fm:
+                    extra_en = f" {fm.group(1)} AI-returned issues were filtered due to invalid format."
+            result["summary"] = f"Found {m.group(1)} issues, {m.group(2)} high-risk issues recommend immediate fix.{extra_en}"
+        else:
+            # Pattern: "发现 X 个问题，主要为中低风险，建议逐条核对修改。"
+            m = _re.match(r"发现 (\d+) 个问题，主要为中低风险，建议逐条核对修改。(.*)", s)
+            if m:
+                extra = m.group(2)
+                extra_en = ""
+                if "AI返回的问题中有" in extra:
+                    fm = _re.search(r"AI返回的问题中有(\d+)条因格式不符合要求已被过滤。", extra)
+                    if fm:
+                        extra_en = f" {fm.group(1)} AI-returned issues were filtered due to invalid format."
+                result["summary"] = f"Found {m.group(1)} issues, mostly medium/low risk, recommend reviewing each one.{extra_en}"
+            else:
+                # Pattern: "发现 X 个低风险问题，建议优化。"
+                m = _re.match(r"发现 (\d+) 个低风险问题，建议优化。(.*)", s)
+                if m:
+                    extra = m.group(2)
+                    extra_en = ""
+                    if "AI返回的问题中有" in extra:
+                        fm = _re.search(r"AI返回的问题中有(\d+)条因格式不符合要求已被过滤。", extra)
+                        if fm:
+                            extra_en = f" {fm.group(1)} AI-returned issues were filtered due to invalid format."
+                    result["summary"] = f"Found {m.group(1)} low-risk issues, recommend optimization.{extra_en}"
+                else:
+                    result["summary"] = SUMMARY_MAP_EN.get(s, s)
         result["mode_label"] = MODE_LABEL_MAP_EN.get(result["mode_label"], result["mode_label"])
+        # Translate ai_error if it contains Chinese
+        ae = result.get("ai_error", "")
+        if ae and _re.search(r"[\u4e00-\u9fff]", ae):
+            if "AI返回中有" in ae and "条问题格式不符合要求，已自动过滤" in ae:
+                fm = _re.search(r"AI返回中有(\d+)条问题格式不符合要求，已自动过滤。", ae)
+                if fm:
+                    result["ai_error"] = f"{fm.group(1)} AI-returned issues had invalid format and were auto-filtered."
+            elif "AI审查完成，但返回的问题格式异常已被过滤" in ae:
+                fm = _re.search(r"\((\d+)条\)", ae)
+                if fm:
+                    result["ai_error"] = f"AI review completed, but returned issues had invalid format and were filtered ({fm.group(1)}), only showing rule-based check results."
+            elif "AI返回的" in ae and "条问题均不符合格式要求，已自动过滤" in ae:
+                fm = _re.search(r"AI返回的(\d+)条问题均不符合格式要求", ae)
+                if fm:
+                    result["ai_error"] = f"All {fm.group(1)} AI-returned issues had invalid format and were auto-filtered; only showing rule-based check results."
+            elif "AI审查未返回明确结果" in ae:
+                result["ai_error"] = "AI review did not return a clear result"
 
     return result
 

@@ -98,28 +98,29 @@ def is_paypal_config_valid() -> bool:
     return _basic_email(merchant_email)
 
 
-def get_paypal_config_status() -> Dict[str, object]:
+def get_paypal_config_status(lang: str = "zh") -> Dict[str, object]:
     cfg = get_paypal_config()
     values = [cfg["client_id"], cfg["client_secret"], cfg["merchant_email"]]
+    en = lang == "en"
     if not any(_is_filled(value) for value in values):
         return {
             "state": "not_configured",
-            "label": "未配置（Demo模式）",
+            "label": "Not configured (Demo)" if en else "未配置（Demo模式）",
             "usable": False,
-            "reason": "未填写 PayPal 配置，使用 Demo 模式。",
+            "reason": "PayPal config not filled, using Demo mode." if en else "未填写 PayPal 配置，使用 Demo 模式。",
         }
     if is_paypal_config_valid():
         return {
             "state": "usable",
-            "label": "配置可用",
+            "label": "Configured" if en else "配置可用",
             "usable": True,
-            "reason": "本地格式校验通过，调用时仍需 PayPal 返回成功。",
+            "reason": "Local format check passed, actual call still needs PayPal success." if en else "本地格式校验通过，调用时仍需 PayPal 返回成功。",
         }
     return {
         "state": "unverified",
-        "label": "已填写配置（未验证）",
+        "label": "Filled (unverified)" if en else "已填写配置（未验证）",
         "usable": False,
-        "reason": "配置已填写但格式未通过本地校验。",
+        "reason": "Config filled but local format check failed." if en else "配置已填写但格式未通过本地校验。",
     }
 
 
@@ -133,51 +134,53 @@ def is_llm_config_valid() -> bool:
     return _is_filled(cfg["model_name"])
 
 
-def get_llm_config_status() -> Dict[str, object]:
+def get_llm_config_status(lang: str = "zh") -> Dict[str, object]:
     cfg = get_llm_config()
     key = cfg["api_key"]
+    en = lang == "en"
     if not key or is_placeholder(key):
         return {
             "state": "not_configured",
-            "label": "未配置（Demo模式）",
+            "label": "Not configured (Demo)" if en else "未配置（Demo模式）",
             "usable": False,
-            "reason": "未填写 LLM_API_KEY，合同审查使用基础规则检查。",
+            "reason": "LLM_API_KEY not filled, contract review uses rule-based checks." if en else "未填写 LLM_API_KEY，合同审查使用基础规则检查。",
         }
     if is_llm_config_valid():
         return {
             "state": "usable",
-            "label": "配置可用",
+            "label": "Configured" if en else "配置可用",
             "usable": True,
-            "reason": "本地格式校验通过，调用时仍需 LLM 服务返回成功。",
+            "reason": "Local format check passed, actual call still needs LLM service success." if en else "本地格式校验通过，调用时仍需 LLM 服务返回成功。",
         }
     return {
         "state": "unverified",
-        "label": "已填写配置（未验证）",
+        "label": "Filled (unverified)" if en else "已填写配置（未验证）",
         "usable": False,
-        "reason": "配置已填写但本地格式校验未通过。",
+        "reason": "Config filled but local format check failed." if en else "配置已填写但本地格式校验未通过。",
     }
 
 
-def get_signal_config_status() -> Dict[str, object]:
+def get_signal_config_status(lang: str = "zh") -> Dict[str, object]:
     cfg = get_signal_config()
     api_url = cfg["api_url"]
+    en = lang == "en"
     if not api_url or is_placeholder(api_url):
         return {
             "state": "not_configured",
-            "label": "未配置（Demo模式）",
+            "label": "Not configured (Demo)" if en else "未配置（Demo模式）",
             "usable": False,
-            "reason": "未配置 SIGNAL_API_URL，使用 Demo Signal Provider。",
+            "reason": "SIGNAL_API_URL not configured, using Demo Signal Provider." if en else "未配置 SIGNAL_API_URL，使用 Demo Signal Provider。",
         }
     if not api_url.startswith(("http://", "https://")):
         return {
             "state": "unverified",
-            "label": "已填写配置（未验证）",
+            "label": "Filled (unverified)" if en else "已填写配置（未验证）",
             "usable": False,
-            "reason": "SIGNAL_API_URL 格式无效。",
+            "reason": "SIGNAL_API_URL format invalid." if en else "SIGNAL_API_URL 格式无效。",
         }
     return {
         "state": "usable",
-        "label": "配置可用",
+        "label": "Configured" if en else "配置可用",
         "usable": True,
-        "reason": "本地格式校验通过。",
+        "reason": "Local format check passed." if en else "本地格式校验通过。",
     }
