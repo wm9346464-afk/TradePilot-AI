@@ -1000,6 +1000,26 @@ elif page == _t("sidebar.page_paypal"):
     with st.expander(_t("paypal.protection_title")):
         st.markdown(_t("paypal.protection_content"))
 
+    # Market-linked payment strategy suggestion
+    st.markdown(f"#### {_t('paypal.pricing_title')}")
+    try:
+        signal_bundle_pp = _cached_get_all_signals(lang=st.session_state.get("lang", "zh"))
+        signals_pp = signal_bundle_pp.get("signals", {})
+        if signals_pp:
+            first_key_pp = list(signals_pp.keys())[0]
+            sig_pp = signals_pp[first_key_pp]
+            signal_text_pp = sig_pp.get("signal", "").lower()
+            if "多" in signal_text_pp or "bull" in signal_text_pp or "涨" in signal_text_pp:
+                st.info(_t("paypal.pricing_bull"))
+            elif "空" in signal_text_pp or "bear" in signal_text_pp or "跌" in signal_text_pp:
+                st.warning(_t("paypal.pricing_bear"))
+            else:
+                st.info(_t("paypal.pricing_neutral"))
+        else:
+            st.info(_t("paypal.pricing_neutral"))
+    except Exception:
+        st.info(_t("paypal.pricing_neutral"))
+
     st.markdown(_t("paypal.create_title"))
     col1, col2 = st.columns(2)
     with col1:

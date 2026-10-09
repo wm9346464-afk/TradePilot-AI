@@ -217,6 +217,10 @@ TRANSLATIONS = {
 - 本项目使用PayPal Invoicing API提供便捷、可追溯的小额支付通道，降低新客户首次合作的信任门槛。
 - 本项目不构成支付保障承诺，具体保障范围以PayPal官方条款为准。
 - 所有交易均在PayPal Sandbox（沙箱）环境中进行，不涉及真实资金。""",
+        "paypal.pricing_title": "行情联动付款策略建议",
+        "paypal.pricing_bull": "当前行情偏多（看涨），建议尽快付款锁定价格，可考虑全款支付以锁定当前低价。",
+        "paypal.pricing_bear": "当前行情偏空（看跌），建议保守付款，可考虑分期付款或货到付款，避免价格下跌风险。",
+        "paypal.pricing_neutral": "当前行情震荡，建议按常规付款方式，保持灵活，可约定价格调整条款。",
         "paypal.create_title": "### 创建付款发票",
         "paypal.payment_type": "支付类型",
         "paypal.type_sample": "样品费 - 新客户样品费用",
@@ -567,6 +571,10 @@ TRANSLATIONS = {
 - This project uses PayPal Invoicing API to provide a convenient, traceable small payment channel, lowering the trust barrier for first-time collaboration with new customers.
 - This project does not constitute a payment protection commitment; specific protection scope is subject to PayPal official terms.
 - All transactions are conducted in the PayPal Sandbox environment, no real funds involved.""",
+        "paypal.pricing_title": "Market-Linked Payment Strategy Suggestion",
+        "paypal.pricing_bull": "Market is bullish (upward trend). Recommend paying promptly to lock in price, consider full payment to secure current low price.",
+        "paypal.pricing_bear": "Market is bearish (downward trend). Recommend conservative payment, consider installment or cash-on-delivery to avoid price decline risk.",
+        "paypal.pricing_neutral": "Market is range-bound. Recommend standard payment method, stay flexible, consider price adjustment clauses.",
         "paypal.create_title": "### Create Payment Invoice",
         "paypal.payment_type": "Payment Type",
         "paypal.type_sample": "Sample Fee - New customer sample cost",
