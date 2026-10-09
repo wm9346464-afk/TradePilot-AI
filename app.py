@@ -83,7 +83,7 @@ def _clear_contract():
 
 st.set_page_config(
     page_title=_t("page_title"),
-    page_icon="📊",
+    page_icon="💳",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -94,68 +94,208 @@ def _cached_get_all_signals(lang: str = "zh"):
     """Cache remote/demo signals to avoid hitting remote API on every rerun."""
     return get_all_signals(lang=lang)
 
-# Custom CSS styles
+# Custom CSS styles - PayPal Design System
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
+    /* ===== PayPal Color Palette ===== */
+    :root {
+        --pp-blue-dark: #003087;
+        --pp-blue: #0070ba;
+        --pp-blue-light: #009cde;
+        --pp-blue-pale: #f0f6ff;
+        --pp-bg: #f7f9fa;
+        --pp-card: #ffffff;
+        --pp-border: #e1e4e5;
+        --pp-text: #0c0c0c;
+        --pp-text-secondary: #6c7378;
+        --pp-success: #009c48;
+        --pp-warning: #f5a623;
+        --pp-danger: #d9364c;
     }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #666;
-        margin-bottom: 2rem;
+
+    /* ===== Global ===== */
+    .stApp {
+        background: var(--pp-bg);
     }
-    .metric-box {
-        background: white;
+    .main .block-container {
+        padding-top: 2rem;
+        max-width: 1100px;
+    }
+    h1, h2, h3 {
+        color: var(--pp-text);
+        font-weight: 700;
+        letter-spacing: -0.01em;
+    }
+
+    /* ===== Sidebar ===== */
+    section[data-testid="stSidebar"] {
+        background: var(--pp-card);
+        border-right: 1px solid var(--pp-border);
+    }
+    section[data-testid="stSidebar"] .stRadio label {
+        padding: 0.6rem 0.75rem;
         border-radius: 10px;
-        padding: 1rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        text-align: center;
+        transition: background 0.15s;
     }
-    .signal-high { color: #d32f2f; font-weight: bold; }
-    .signal-medium { color: #f57c00; font-weight: bold; }
-    .signal-low { color: #388e3c; font-weight: bold; }
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background: var(--pp-blue-pale);
+    }
+
+    /* ===== Buttons - PayPal Style ===== */
+    .stButton > button {
+        background: var(--pp-blue);
+        color: white;
+        border: none;
+        border-radius: 24px;
+        padding: 0.55rem 1.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.15s ease;
+        box-shadow: 0 1px 3px rgba(0,112,186,0.2);
+    }
+    .stButton > button:hover {
+        background: var(--pp-blue-dark);
+        box-shadow: 0 2px 8px rgba(0,48,135,0.3);
+        transform: translateY(-1px);
+    }
+    .stButton > button:active {
+        transform: translateY(0);
+    }
+
+    /* ===== Inputs ===== */
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea,
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > div {
+        border: 1px solid var(--pp-border);
+        border-radius: 10px;
+        padding: 0.6rem 0.75rem;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: var(--pp-blue);
+        box-shadow: 0 0 0 3px rgba(0,112,186,0.15);
+    }
+
+    /* ===== Cards / Metrics ===== */
+    .metric-box {
+        background: var(--pp-card);
+        border: 1px solid var(--pp-border);
+        border-radius: 14px;
+        padding: 1.25rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        text-align: center;
+        transition: box-shadow 0.2s;
+    }
+    .metric-box:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    .metric-box h3 {
+        color: var(--pp-blue-dark);
+        font-size: 1.4rem;
+        margin-bottom: 0.25rem;
+    }
+    .metric-box p {
+        color: var(--pp-text-secondary);
+        font-size: 0.85rem;
+        margin: 0;
+    }
+
+    /* ===== Workflow Steps ===== */
     .workflow-step {
         display: flex;
         align-items: center;
-        padding: 0.8rem;
-        background: #f0f4f8;
-        border-radius: 8px;
-        margin-bottom: 0.5rem;
+        padding: 0.9rem 1rem;
+        background: var(--pp-card);
+        border: 1px solid var(--pp-border);
+        border-radius: 12px;
+        margin-bottom: 0.6rem;
+        transition: border-color 0.15s;
+    }
+    .workflow-step:hover {
+        border-color: var(--pp-blue-light);
     }
     .step-number {
-        background: #2d5a87;
+        background: var(--pp-blue);
         color: white;
-        width: 30px;
-        height: 30px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-weight: bold;
+        font-weight: 700;
+        font-size: 0.85rem;
         margin-right: 1rem;
         flex-shrink: 0;
     }
+
+    /* ===== Status Badges ===== */
     .mode-live {
-        background: #e8f5e9;
-        color: #2e7d32;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: bold;
+        background: #e6f4ea;
+        color: var(--pp-success);
+        padding: 4px 14px;
+        border-radius: 16px;
+        font-size: 0.82rem;
+        font-weight: 600;
     }
     .mode-demo {
-        background: #fff3e0;
-        color: #e65100;
-        padding: 4px 12px;
+        background: #fff4e0;
+        color: #b8860b;
+        padding: 4px 14px;
+        border-radius: 16px;
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+    .signal-high { color: var(--pp-danger); font-weight: 600; }
+    .signal-medium { color: var(--pp-warning); font-weight: 600; }
+    .signal-low { color: var(--pp-success); font-weight: 600; }
+
+    /* ===== Headers ===== */
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: var(--pp-blue-dark);
+        margin-bottom: 0.3rem;
+        letter-spacing: -0.02em;
+    }
+    .sub-header {
+        font-size: 1.05rem;
+        color: var(--pp-text-secondary);
+        margin-bottom: 1.5rem;
+        line-height: 1.5;
+    }
+
+    /* ===== DataFrames / Tables ===== */
+    .stDataFrame {
         border-radius: 12px;
-        font-size: 0.85rem;
-        font-weight: bold;
+        overflow: hidden;
+        border: 1px solid var(--pp-border);
+    }
+
+    /* ===== Tabs ===== */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 10px 10px 0 0;
+        padding: 0.5rem 1rem;
+    }
+    .stTabs [aria-selected="true"] {
+        color: var(--pp-blue) !important;
+    }
+
+    /* ===== Expander ===== */
+    .streamlit-expanderHeader {
+        border-radius: 10px;
+        font-weight: 600;
+    }
+
+    /* ===== Info/Warning/Error boxes ===== */
+    .stAlert {
+        border-radius: 12px;
+        border: none;
     }
 </style>
 """, unsafe_allow_html=True)
