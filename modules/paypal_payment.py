@@ -469,6 +469,7 @@ def create_invoice_demo(
     amount: float,
     currency: str = "USD",
     contract_id: str = "",
+    lang: str = "zh",
 ) -> dict:
     """
     演示模式：生成模拟发票（不调用真实API）
@@ -480,40 +481,58 @@ def create_invoice_demo(
         amount: 金额
         currency: 货币
         contract_id: 关联合同编号
+        lang: "zh" or "en", controls payment_type_name and note language
 
     返回：完整的发票信息（含模拟付款链接）
     """
+    if lang not in ("zh", "en"):
+        lang = "zh"
     store = get_invoice_store()
     invoice_id = f"INV-{uuid.uuid4().hex[:8].upper()}"
     invoice_number = f"TP-{datetime.now(CN_TZ).strftime('%Y%m%d')}-{len(store) + 1:04d}"
 
-    # 支付类型对应的商品描述
+    # 支付类型对应的商品描述（双语）
     type_descriptions = {
         "sample_fee": {
             "name": "样品费 - 黑色系大宗商品样品",
+            "name_en": "Sample Fee - Ferrous Commodity Sample",
             "note": "新客户样品费用，含样品成本及快递费。样品确认满意后可转为正式订单。",
+            "note_en": "New customer sample fee, including sample cost and delivery. Can be converted to formal order after sample confirmation.",
         },
         "trial_order": {
             "name": "小额试单 - 安全支付通道",
-            # 【修复表述】去掉"买家保护机制"，改为"安全支付通道+可追溯"
+            "name_en": "Trial Order - Secure Payment Channel",
             "note": (
                 "新客户首次合作小额试单，使用PayPal安全支付通道，交易可追溯，"
                 "降低首次合作信任门槛。试单成功后可转为大额公对公交易。注意："
                 "B2B大宗商品交易可能不适用PayPal标准买家保护，具体以PayPal条款为准。"
             ),
+            "note_en": (
+                "New customer first-time trial order via PayPal secure payment channel, "
+                "traceable transactions, lowering trust barrier for first cooperation. "
+                "Can be converted to large B2B transaction after successful trial. Note: "
+                "B2B commodity transactions may not be eligible for PayPal standard buyer protection, subject to PayPal terms."
+            ),
         },
         "deposit": {
             "name": "诚意保证金",
+            "name_en": "Good Faith Deposit",
             "note": "大额订单诚意保证金，证明购买诚意。保证金可在后续大额货款中抵扣。",
+            "note_en": "Good faith deposit for large order, demonstrating purchase commitment. Deposit can be deducted from subsequent large payment.",
         },
         "service_fee": {
             "name": "跨境服务费",
+            "name_en": "Cross-border Service Fee",
             "note": "跨境贸易相关服务费（检验、物流、咨询等），支持多币种支付。",
+            "note_en": "Cross-border trade service fee (inspection, logistics, consulting, etc.), supports multi-currency payment.",
         },
     }
 
     type_info = type_descriptions.get(payment_type, type_descriptions["sample_fee"])
     type_meta = get_payment_type_meta(payment_type)
+
+    display_name = type_info["name_en"] if lang == "en" else type_info["name"]
+    display_note = type_info["note_en"] if lang == "en" else type_info["note"]
 
     invoice = {
         "success": True,
@@ -522,14 +541,14 @@ def create_invoice_demo(
         "invoice_number": invoice_number,
         "status": "DRAFT",  # DRAFT -> SENT -> PAID
         "payment_type": payment_type,
-        "payment_type_name": type_info["name"],
+        "payment_type_name": display_name,
         "payment_type_name_en": type_meta["en"],
         "buyer_name": buyer_name,
         "buyer_email": buyer_email,
         "amount": float(_to_decimal(amount)),
         "total": float(_to_decimal(amount)),
         "currency": currency,
-        "note": type_info["note"],
+        "note": display_note,
         "contract_id": contract_id,
         "created_at": datetime.now(CN_TZ).isoformat(),
         "sent_at": None,
@@ -628,6 +647,7 @@ def create_and_send_invoice(
     contract_id: str = "",
     use_api: bool = True,
     allow_demo_fallback: bool = False,
+    lang: str = "zh",
 ) -> dict:
     """
     创建并发送发票（主入口）
@@ -644,6 +664,7 @@ def create_and_send_invoice(
         contract_id: 关联合同编号
         use_api: True=尝试API模式（失败返回错误），False=强制演示模式
         allow_demo_fallback: use_api=True但未配置时，是否允许回退演示模式
+        lang: "zh" or "en", controls demo invoice display language
 
     返回：发票信息（含付款链接），失败返回 {"success": False, "error": "..."}
     """
@@ -708,7 +729,7 @@ def create_and_send_invoice(
         return invoice
 
     # 演示模式（用户显式选择 use_api=False）
-    invoice = create_invoice_demo(payment_type, buyer_name, buyer_email, amount, currency, contract_id)
+    invoice = create_invoice_demo(payment_type, buyer_name, buyer_email, amount, currency, contract_id, lang=lang)
     result = send_invoice_demo(invoice["invoice_id"])
     invoice["status"] = "SENT"
     invoice["send_result"] = result

@@ -35,6 +35,29 @@ VALID_SEVERITIES = {"高", "中", "低"}
 # 合法的问题类型
 VALID_TYPES = {"文字错误", "条款完整性", "数据一致性", "数据错误", "风险提示", "合规性", "格式问题"}
 
+# Bilingual mappings for contract checker output
+TYPE_MAP_EN = {
+    "文字错误": "Typo / Wording",
+    "条款完整性": "Clause Completeness",
+    "数据一致性": "Data Consistency",
+    "数据错误": "Data Error",
+    "风险提示": "Risk Alert",
+    "合规性": "Compliance",
+    "格式问题": "Format Issue",
+}
+SEVERITY_MAP_EN = {"高": "High", "中": "Medium", "低": "Low"}
+MODE_LABEL_MAP_EN = {
+    "AI深度审查": "AI Deep Review",
+    "仅基础规则检查": "Rule-only Check",
+    "演示模式": "Demo Mode",
+    "空": "Empty",
+    "输入过长": "Input Too Long",
+}
+SUMMARY_MAP_EN = {
+    "请输入合同内容": "Please enter contract content",
+    "未发现明显问题，合同较为规范。": "No obvious issues found, contract is fairly standard.",
+}
+
 MAX_CONTRACT_CHARS = 20000
 MAX_FIELD_LENGTHS = {
     "type": 50,
@@ -576,6 +599,7 @@ def check_contract(
     contract_text: str,
     use_ai: bool = True,
     force_demo: bool = False,
+    lang: str = "zh",
 ) -> dict:
     """
     合同审查主入口
@@ -589,6 +613,7 @@ def check_contract(
         contract_text: 合同文本内容
         use_ai: 是否尝试使用AI深度审查
         force_demo: 是否强制使用演示模式（显式选择，优先级高于use_ai）
+        lang: "zh" or "en", controls output labels (type/severity/summary/mode_label)
 
     返回：
         {
@@ -603,8 +628,10 @@ def check_contract(
             "filtered_count": "AI返回但被schema过滤的问题数量",
         }
     """
+    if lang not in ("zh", "en"):
+        lang = "zh"
     if not isinstance(contract_text, str) or not contract_text.strip():
-        return {
+        empty_result = {
             "total_issues": 0,
             "high_count": 0,
             "medium_count": 0,
@@ -617,9 +644,13 @@ def check_contract(
             "ai_error": "",
             "filtered_count": 0,
         }
+        if lang == "en":
+            empty_result["summary"] = SUMMARY_MAP_EN.get(empty_result["summary"], empty_result["summary"])
+            empty_result["mode_label"] = MODE_LABEL_MAP_EN.get(empty_result["mode_label"], empty_result["mode_label"])
+        return empty_result
 
     if len(contract_text) > MAX_CONTRACT_CHARS:
-        return {
+        long_result = {
             "total_issues": 0,
             "high_count": 0,
             "medium_count": 0,
@@ -632,6 +663,11 @@ def check_contract(
             "ai_error": f"合同文本长度为 {len(contract_text)} 字符，超过上限 {MAX_CONTRACT_CHARS}",
             "filtered_count": 0,
         }
+        if lang == "en":
+            long_result["summary"] = f"Contract text exceeds {MAX_CONTRACT_CHARS} character limit"
+            long_result["mode_label"] = "Input Too Long"
+            long_result["ai_error"] = f"Contract length is {len(contract_text)} chars, exceeds limit {MAX_CONTRACT_CHARS}"
+        return long_result
 
     # 1. 基础检查（始终运行）
     all_issues = basic_text_check(contract_text)
@@ -721,7 +757,7 @@ def check_contract(
     if filtered_count > 0:
         summary += f" AI返回的问题中有{filtered_count}条因格式不符合要求已被过滤。"
 
-    return {
+    result = {
         "total_issues": len(all_issues),
         "high_count": high_count,
         "medium_count": medium_count,
@@ -734,6 +770,16 @@ def check_contract(
         "ai_error": ai_error,
         "filtered_count": filtered_count,
     }
+
+    # Translate output labels if lang is English
+    if lang == "en":
+        for issue in result["issues"]:
+            issue["type"] = TYPE_MAP_EN.get(issue.get("type", ""), issue.get("type", ""))
+            issue["severity"] = SEVERITY_MAP_EN.get(issue.get("severity", ""), issue.get("severity", ""))
+        result["summary"] = SUMMARY_MAP_EN.get(result["summary"], result["summary"])
+        result["mode_label"] = MODE_LABEL_MAP_EN.get(result["mode_label"], result["mode_label"])
+
+    return result
 
 
 # ============================================================

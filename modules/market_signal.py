@@ -25,7 +25,7 @@ def _get_provider() -> SignalProvider:
     return get_default_provider()
 
 
-def get_all_signals() -> dict:
+def get_all_signals(lang: str = "zh") -> dict:
     """
     返回结构化的信号结果
 
@@ -39,7 +39,7 @@ def get_all_signals() -> dict:
         "signals": {"cold_fut_rb": {...}, ...},
     }
     """
-    return _get_provider().get_all_signals()
+    return _get_provider().get_all_signals(lang=lang)
 
 
 def get_price_chart_data() -> dict:
@@ -58,11 +58,11 @@ def get_price_chart_data() -> dict:
     return _get_provider().get_price_chart_data()
 
 
-def get_provider_info(bundle: dict = None) -> dict:
+def get_provider_info(bundle: dict = None, lang: str = "zh") -> dict:
     """返回配置信息；传入 bundle 时返回该次调用的降级状态。"""
     provider = _get_provider()
     if bundle is None:
-        bundle = provider.get_all_signals()
+        bundle = provider.get_all_signals(lang=lang)
     return {
         "name": provider.provider_name,
         "is_demo": bool(bundle.get("is_demo", provider.is_demo)),

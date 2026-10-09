@@ -90,9 +90,9 @@ st.set_page_config(
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _cached_get_all_signals():
+def _cached_get_all_signals(lang: str = "zh"):
     """Cache remote/demo signals to avoid hitting remote API on every rerun."""
-    return get_all_signals()
+    return get_all_signals(lang=lang)
 
 # Custom CSS styles
 st.markdown("""
@@ -305,9 +305,9 @@ elif page == _t("sidebar.page_market"):
     st.title(_t("market.title"))
     st.markdown(_t("market.subtitle"))
 
-    signal_bundle = _cached_get_all_signals()
+    signal_bundle = _cached_get_all_signals(lang=st.session_state.get("lang", "zh"))
     signals = signal_bundle.get("signals", {})
-    provider_info = get_provider_info(signal_bundle)
+    provider_info = get_provider_info(signal_bundle, lang=st.session_state.get("lang", "zh"))
 
     if signal_bundle.get("degraded"):
         st.warning(
@@ -492,6 +492,7 @@ elif page == _t("sidebar.page_contract"):
                 pending_text,
                 use_ai=st.session_state.get("pending_use_ai", False),
                 force_demo=st.session_state.get("pending_force_demo", False),
+                lang=st.session_state.get("lang", "zh"),
             )
         st.session_state["contract_result"] = result
         st.session_state["contract_processing"] = False
@@ -613,6 +614,7 @@ elif page == _t("sidebar.page_paypal"):
             "currency": currency,
             "contract_id": contract_id,
             "use_api": use_api,
+            "lang": st.session_state.get("lang", "zh"),
         }
         st.session_state["invoice_processing"] = True
         st.session_state["last_invoice_result"] = None
@@ -888,6 +890,7 @@ elif page == _t("sidebar.page_notification"):
         if st.button(_t("notification.generate"), type="primary", use_container_width=True):
             result = generate_notification(
                 notification_type[0],
+                lang=st.session_state.get("lang", "zh"),
                 customer_name=customer_name,
                 company_name=company_name,
                 **extra_vars,
@@ -925,6 +928,7 @@ elif page == _t("sidebar.page_notification"):
                     amount=amount,
                     currency=currency,
                     company_name=company_name,
+                    lang=st.session_state.get("lang", "zh"),
                 )
 
             st.success(_t("notification.workflow_success", count=len(notifications)))

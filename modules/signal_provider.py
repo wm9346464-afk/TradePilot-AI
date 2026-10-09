@@ -38,13 +38,48 @@ from modules.config import get_signal_config, is_placeholder, load_config
 
 load_config()
 
+# Bilingual signal metadata (module-level constants)
+SIGNAL_META = {
+    "cold_fut_rb": {
+        "zh": {"name": "冷轧-螺纹价差观察", "wait": "观望", "high": "价差偏高，关注收敛", "low": "价差偏低，关注修复"},
+        "en": {"name": "Cold-rolled vs Rebar Spread", "wait": "Neutral", "high": "Spread elevated, watch convergence", "low": "Spread depressed, watch recovery"},
+    },
+    "cold_fut_hc": {
+        "zh": {"name": "冷轧-热卷价差观察", "wait": "观望", "high": "价差偏高，关注收敛", "low": "价差偏低，关注修复"},
+        "en": {"name": "Cold-rolled vs Hot-rolled Spread", "wait": "Neutral", "high": "Spread elevated, watch convergence", "low": "Spread depressed, watch recovery"},
+    },
+    "rb_basis": {
+        "zh": {"name": "螺纹基差观察", "wait": "观望", "high": "现货升水偏高", "low": "期货升水偏高"},
+        "en": {"name": "Rebar Basis Observation", "wait": "Neutral", "high": "Spot premium elevated", "low": "Futures premium elevated"},
+    },
+}
+CONF_MAP = {"zh": {"高": "高", "中": "中", "低": "低"}, "en": {"高": "High", "中": "Medium", "低": "Low"}}
+REASON_TEMPLATES = {
+    "zh": {
+        "spread": "基于合成演示数据的简化价差分析",
+        "basis": "基于合成演示数据的简化基差分析",
+        "spread_detail": "当前价差 {val:.0f}，偏离120日均值 {z:.1f} 个标准差",
+        "basis_detail": "当前基差 {val:.0f}，偏离120日均值 {z:.1f} 个标准差",
+        "disclaimer": "本信号为演示模式，不构成投资建议",
+    },
+    "en": {
+        "spread": "Simplified spread analysis based on synthetic demo data",
+        "basis": "Simplified basis analysis based on synthetic demo data",
+        "spread_detail": "Current spread {val:.0f}, deviates from 120-day mean by {z:.1f} standard deviations",
+        "basis_detail": "Current basis {val:.0f}, deviates from 120-day mean by {z:.1f} standard deviations",
+        "disclaimer": "This signal is in demo mode, does not constitute investment advice",
+    },
+}
+
 
 class SignalProvider(ABC):
     """行情信号提供者抽象接口"""
 
     @abstractmethod
-    def get_all_signals(self) -> Dict[str, object]:
-        """返回 source/degraded/error_code/signals/as_of 结构化结果"""
+    def get_all_signals(self, lang: str = "zh") -> Dict[str, object]:
+        """返回 source/degraded/error_code/signals/as_of 结构化结果
+        lang: "zh" or "en", controls signal names/directions/reasons language
+        """
         pass
 
     @abstractmethod
@@ -142,16 +177,17 @@ class DemoSignalProvider(SignalProvider):
             return latest.strftime("%Y-%m-%d")
         return str(latest)
 
-    def get_all_signals(self) -> Dict[str, dict]:
+    def get_all_signals(self, lang: str = "zh") -> Dict[str, dict]:
         """
         返回演示信号
 
         注意：这些信号基于合成数据和简化逻辑生成，仅用于演示目的。
         不代表任何真实市场观点或交易建议。
+        lang: "zh" or "en"
         """
         if len(self._df) < 50:
             return self._make_bundle(
-                self._empty_signals(),
+                self._empty_signals(lang),
                 degraded=bool(self._data_warning),
                 error_code="DEMO_DATA_INSUFFICIENT",
                 fallback_reason=self._data_warning,
@@ -171,65 +207,72 @@ class DemoSignalProvider(SignalProvider):
         hc_vol = recent["hc_close"].pct_change().std()
 
         # 演示信号：根据波动率水平设置不同的状态
+        if lang not in ("zh", "en"):
+            lang = "zh"
+        rt = REASON_TEMPLATES[lang]
+        cm = CONF_MAP[lang]
         signals = {}
 
         # 信号1：冷轧-螺纹价差观察
         cold_rb_spread = latest["cold_roll_close"] - latest["rb_close"]
         cold_rb_z = self._demo_zscore(self._df["cold_roll_close"] - self._df["rb_close"])
+        meta1 = SIGNAL_META["cold_fut_rb"][lang]
         signals["cold_fut_rb"] = {
-            "zh": "冷轧-螺纹价差观察",
-            "direction": "观望" if abs(cold_rb_z) < 1.2 else ("价差偏高，关注收敛" if cold_rb_z > 0 else "价差偏低，关注修复"),
+            "zh": meta1["name"],
+            "direction": meta1["wait"] if abs(cold_rb_z) < 1.2 else (meta1["high"] if cold_rb_z > 0 else meta1["low"]),
             "triggered": abs(cold_rb_z) >= 1.2,
-            "confidence": "中" if abs(cold_rb_z) >= 1.5 else "低",
+            "confidence": cm["中"] if abs(cold_rb_z) >= 1.5 else cm["低"],
             "probability": 0.55 + min(abs(cold_rb_z) * 0.05, 0.15),  # 演示值，非真实回测
             "z": round(float(cold_rb_z), 2),
             "date": latest_date,
             "current_spread": round(float(cold_rb_spread), 0),
             "roll_mean": round(float((self._df["cold_roll_close"] - self._df["rb_close"]).tail(120).mean()), 0),
             "reasons": [
-                "基于合成演示数据的简化价差分析",
-                f"当前价差 {cold_rb_spread:.0f}，偏离120日均值 {abs(cold_rb_z):.1f} 个标准差",
-                "本信号为演示模式，不构成投资建议",
+                rt["spread"],
+                rt["spread_detail"].format(val=cold_rb_spread, z=abs(cold_rb_z)),
+                rt["disclaimer"],
             ],
         }
 
         # 信号2：冷轧-热卷价差观察
         cold_hc_spread = latest["cold_roll_close"] - latest["hc_close"]
         cold_hc_z = self._demo_zscore(self._df["cold_roll_close"] - self._df["hc_close"])
+        meta2 = SIGNAL_META["cold_fut_hc"][lang]
         signals["cold_fut_hc"] = {
-            "zh": "冷轧-热卷价差观察",
-            "direction": "观望" if abs(cold_hc_z) < 1.2 else ("价差偏高，关注收敛" if cold_hc_z > 0 else "价差偏低，关注修复"),
+            "zh": meta2["name"],
+            "direction": meta2["wait"] if abs(cold_hc_z) < 1.2 else (meta2["high"] if cold_hc_z > 0 else meta2["low"]),
             "triggered": abs(cold_hc_z) >= 1.2,
-            "confidence": "中" if abs(cold_hc_z) >= 1.5 else "低",
+            "confidence": cm["中"] if abs(cold_hc_z) >= 1.5 else cm["低"],
             "probability": 0.55 + min(abs(cold_hc_z) * 0.05, 0.15),
             "z": round(float(cold_hc_z), 2),
             "date": latest_date,
             "current_spread": round(float(cold_hc_spread), 0),
             "roll_mean": round(float((self._df["cold_roll_close"] - self._df["hc_close"]).tail(120).mean()), 0),
             "reasons": [
-                "基于合成演示数据的简化价差分析",
-                f"当前价差 {cold_hc_spread:.0f}，偏离120日均值 {abs(cold_hc_z):.1f} 个标准差",
-                "本信号为演示模式，不构成投资建议",
+                rt["spread"],
+                rt["spread_detail"].format(val=cold_hc_spread, z=abs(cold_hc_z)),
+                rt["disclaimer"],
             ],
         }
 
         # 信号3：螺纹基差观察
         rb_basis = latest["rb_spot"] - latest["rb_close"]
         rb_basis_z = self._demo_zscore(self._df["rb_spot"] - self._df["rb_close"])
+        meta3 = SIGNAL_META["rb_basis"][lang]
         signals["rb_basis"] = {
-            "zh": "螺纹基差观察",
-            "direction": "观望" if abs(rb_basis_z) < 1.2 else ("现货升水偏高" if rb_basis_z > 0 else "期货升水偏高"),
+            "zh": meta3["name"],
+            "direction": meta3["wait"] if abs(rb_basis_z) < 1.2 else (meta3["high"] if rb_basis_z > 0 else meta3["low"]),
             "triggered": abs(rb_basis_z) >= 1.2,
-            "confidence": "中" if abs(rb_basis_z) >= 1.5 else "低",
+            "confidence": cm["中"] if abs(rb_basis_z) >= 1.5 else cm["低"],
             "probability": 0.55 + min(abs(rb_basis_z) * 0.05, 0.15),
             "z": round(float(rb_basis_z), 2),
             "date": latest_date,
             "current_spread": round(float(rb_basis), 0),
             "roll_mean": round(float((self._df["rb_spot"] - self._df["rb_close"]).tail(120).mean()), 0),
             "reasons": [
-                "基于合成演示数据的简化基差分析",
-                f"当前基差 {rb_basis:.0f}，偏离120日均值 {abs(rb_basis_z):.1f} 个标准差",
-                "本信号为演示模式，不构成投资建议",
+                rt["basis"],
+                rt["basis_detail"].format(val=rb_basis, z=abs(rb_basis_z)),
+                rt["disclaimer"],
             ],
         }
 
@@ -262,18 +305,27 @@ class DemoSignalProvider(SignalProvider):
             return 0.0
         return float((series.iloc[-1] - mean) / std)
 
-    def _empty_signals(self) -> Dict[str, dict]:
+    def _empty_signals(self, lang: str = "zh") -> Dict[str, dict]:
         """数据不足时返回空信号"""
+        if lang not in ("zh", "en"):
+            lang = "zh"
+        names = {
+            "zh": {"cold_fut_rb": "冷轧-螺纹价差观察", "cold_fut_hc": "冷轧-热卷价差观察", "rb_basis": "螺纹基差观察",
+                   "direction": "数据不足", "reason": "演示数据不足", "conf": "低"},
+            "en": {"cold_fut_rb": "Cold-rolled vs Rebar Spread", "cold_fut_hc": "Cold-rolled vs Hot-rolled Spread", "rb_basis": "Rebar Basis Observation",
+                   "direction": "Insufficient Data", "reason": "Demo data insufficient", "conf": "Low"},
+        }
+        n = names[lang]
         return {
-            "cold_fut_rb": {"zh": "冷轧-螺纹价差观察", "direction": "数据不足", "triggered": False,
-                             "confidence": "低", "probability": 0.0, "z": 0.0, "date": "N/A",
-                             "reasons": ["演示数据不足"]},
-            "cold_fut_hc": {"zh": "冷轧-热卷价差观察", "direction": "数据不足", "triggered": False,
-                             "confidence": "低", "probability": 0.0, "z": 0.0, "date": "N/A",
-                             "reasons": ["演示数据不足"]},
-            "rb_basis": {"zh": "螺纹基差观察", "direction": "数据不足", "triggered": False,
-                         "confidence": "低", "probability": 0.0, "z": 0.0, "date": "N/A",
-                         "reasons": ["演示数据不足"]},
+            "cold_fut_rb": {"zh": n["cold_fut_rb"], "direction": n["direction"], "triggered": False,
+                             "confidence": n["conf"], "probability": 0.0, "z": 0.0, "date": "N/A",
+                             "reasons": [n["reason"]]},
+            "cold_fut_hc": {"zh": n["cold_fut_hc"], "direction": n["direction"], "triggered": False,
+                             "confidence": n["conf"], "probability": 0.0, "z": 0.0, "date": "N/A",
+                             "reasons": [n["reason"]]},
+            "rb_basis": {"zh": n["rb_basis"], "direction": n["direction"], "triggered": False,
+                         "confidence": n["conf"], "probability": 0.0, "z": 0.0, "date": "N/A",
+                         "reasons": [n["reason"]]},
         }
 
     def get_price_chart_data(self) -> Dict[str, list]:
@@ -376,10 +428,10 @@ class RemoteSignalProvider(SignalProvider):
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
 
-    def get_all_signals(self) -> Dict[str, dict]:
+    def get_all_signals(self, lang: str = "zh") -> Dict[str, dict]:
         """从远程API获取信号，返回结构化结果；失败时回退到Demo。"""
         if not self._api_url or is_placeholder(self._api_url):
-            return self._fallback_signals("未配置 SIGNAL_API_URL", "REMOTE_NOT_CONFIGURED")
+            return self._fallback_signals("未配置 SIGNAL_API_URL" if lang == "zh" else "SIGNAL_API_URL not configured", "REMOTE_NOT_CONFIGURED", lang=lang)
         try:
             resp = requests.get(
                 f"{self._api_url.rstrip('/')}/signals",
@@ -406,17 +458,18 @@ class RemoteSignalProvider(SignalProvider):
                 "is_demo": False,
             }
         except ValueError as exc:
-            return self._fallback_signals("远程响应格式无效", "INVALID_REMOTE_PAYLOAD")
+            return self._fallback_signals("远程响应格式无效" if lang == "zh" else "Invalid remote response", "INVALID_REMOTE_PAYLOAD", lang=lang)
         except Exception as exc:
             return self._fallback_signals(
-                f"远程信号服务不可用: {type(exc).__name__}: {exc}",
+                f"远程信号服务不可用: {type(exc).__name__}: {exc}" if lang == "zh" else f"Remote signal service unavailable: {type(exc).__name__}: {exc}",
                 "REMOTE_UNAVAILABLE",
+                lang=lang,
             )
 
-    def _fallback_signals(self, reason: str, error_code: str) -> Dict[str, dict]:
+    def _fallback_signals(self, reason: str, error_code: str, lang: str = "zh") -> Dict[str, dict]:
         """回退到Demo并返回本次调用的结构化降级状态。"""
         logger.warning("远程信号降级为Demo: %s", reason)
-        bundle = self._fallback.get_all_signals()
+        bundle = self._fallback.get_all_signals(lang=lang)
         signals = bundle["signals"]
         for sig in signals.values():
             reasons = sig.get("reasons")
