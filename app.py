@@ -331,6 +331,7 @@ with st.sidebar:
         _t("sidebar.nav_label"),
         [
             _t("sidebar.page_home"),
+            _t("sidebar.page_onboarding"),
             _t("sidebar.page_market"),
             _t("sidebar.page_contract"),
             _t("sidebar.page_paypal"),
@@ -442,6 +443,278 @@ if page == _t("sidebar.page_home"):
     st.markdown("---")
     st.markdown(f"### {_t('home.start_title')}")
     st.markdown(_t("home.start_desc"))
+
+
+# ============================================================
+# Page: New Customer Onboarding Workflow
+# ============================================================
+
+elif page == _t("sidebar.page_onboarding"):
+    st.markdown(f"<h1 class='main-header'>{_t('onboarding.title')}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p class='sub-header'>{_t('onboarding.subtitle')}</p>", unsafe_allow_html=True)
+
+    # Initialize onboarding state
+    if "onboarding_step" not in st.session_state:
+        st.session_state["onboarding_step"] = 0
+    if "onboarding_data" not in st.session_state:
+        st.session_state["onboarding_data"] = {}
+    if "onboarding_contract_reviewed" not in st.session_state:
+        st.session_state["onboarding_contract_reviewed"] = False
+    if "onboarding_invoice_created" not in st.session_state:
+        st.session_state["onboarding_invoice_created"] = False
+    if "onboarding_paid" not in st.session_state:
+        st.session_state["onboarding_paid"] = False
+    if "onboarding_notifications_generated" not in st.session_state:
+        st.session_state["onboarding_notifications_generated"] = False
+
+    current_step = st.session_state["onboarding_step"]
+    ob_data = st.session_state["onboarding_data"]
+    lang = st.session_state.get("lang", "zh")
+
+    # Step indicator
+    steps = [_t("onboarding.step1"), _t("onboarding.step2"), _t("onboarding.step3"), _t("onboarding.step4")]
+    cols = st.columns(4)
+    for i, (col, step_name) in enumerate(zip(cols, steps)):
+        with col:
+            if i < current_step:
+                st.markdown(f"<div style='text-align:center;'><div style='background:#009c48;color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto;font-weight:bold;'>✓</div><div style='margin-top:8px;font-size:0.85rem;color:#009c48;font-weight:600;'>{step_name}</div></div>", unsafe_allow_html=True)
+            elif i == current_step:
+                st.markdown(f"<div style='text-align:center;'><div style='background:#0070ba;color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto;font-weight:bold;'>{i+1}</div><div style='margin-top:8px;font-size:0.85rem;color:#0070ba;font-weight:600;'>{step_name}</div></div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='text-align:center;'><div style='background:#e1e4e5;color:#6c7378;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto;font-weight:bold;'>{i+1}</div><div style='margin-top:8px;font-size:0.85rem;color:#6c7378;'>{step_name}</div></div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ===== Step 1: Customer Inquiry & Market Analysis =====
+    if current_step == 0:
+        st.markdown(f"### {_t('onboarding.step1_title')}")
+        st.caption(_t("onboarding.step1_desc"))
+
+        col1, col2 = st.columns(2)
+        with col1:
+            customer_name = st.text_input(_t("onboarding.customer_name"), value=ob_data.get("customer_name", ""), placeholder=_t("onboarding.customer_name_placeholder"))
+            product = st.text_input(_t("onboarding.product"), value=ob_data.get("product", ""), placeholder=_t("onboarding.product_placeholder"))
+        with col2:
+            quantity = st.number_input(_t("onboarding.quantity"), min_value=0, value=ob_data.get("quantity", 100), step=10)
+
+        # Show market signal
+        st.markdown(f"#### {_t('onboarding.market_signal')}")
+        signal_bundle = _cached_get_all_signals(lang=lang)
+        signals = signal_bundle.get("signals", {})
+        if signals:
+            first_key = list(signals.keys())[0]
+            sig = signals[first_key]
+            conf = sig.get("confidence", "medium")
+            conf_color = {"high": "#d9364c", "medium": "#f5a623", "low": "#009c48"}.get(conf, "#6c7378")
+            st.markdown(f"""
+            <div class='metric-box'>
+                <h3 style='color:{conf_color};'>{sig.get('signal','N/A')}</h3>
+                <p>{first_key} | {_t(f'market.conf_{conf}') if conf in ['high','medium','low'] else conf}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Pricing suggestion based on signal
+        st.markdown(f"#### {_t('onboarding.pricing_suggestion')}")
+        if signals:
+            first_key = list(signals.keys())[0]
+            sig = signals[first_key]
+            signal_text = sig.get("signal", "").lower()
+            if "多" in signal_text or "bull" in signal_text or "涨" in signal_text:
+                suggestion = "当前行情偏多，建议尽快锁定价格，可适当提高报价" if lang == "zh" else "Market is bullish, recommend locking price soon, can slightly raise offer"
+            elif "空" in signal_text or "bear" in signal_text or "跌" in signal_text:
+                suggestion = "当前行情偏空，建议保守报价，预留降价空间" if lang == "zh" else "Market is bearish, recommend conservative pricing, reserve room for price cuts"
+            else:
+                suggestion = "当前行情震荡，建议按市场价报价，保持灵活" if lang == "zh" else "Market is range-bound, recommend market-price offer, stay flexible"
+            st.info(suggestion)
+        else:
+            st.info("按市场价报价" if lang == "zh" else "Price at market rate")
+
+        # Save data and next
+        if st.button(_t("onboarding.next"), key="ob_next_1", type="primary"):
+            ob_data["customer_name"] = customer_name
+            ob_data["product"] = product
+            ob_data["quantity"] = quantity
+            st.session_state["onboarding_step"] = 1
+            st.rerun()
+
+    # ===== Step 2: Contract Review =====
+    elif current_step == 1:
+        st.markdown(f"### {_t('onboarding.step2_title')}")
+        st.caption(_t("onboarding.step2_desc"))
+
+        col_btn1, col_btn2 = st.columns([1, 4])
+        with col_btn1:
+            if st.button(_t("onboarding.use_sample_contract"), key="ob_sample"):
+                st.session_state['ob_contract_text'] = SAMPLE_CONTRACT
+        with col_btn2:
+            if st.button(_t("onboarding.clear_contract"), key="ob_clear"):
+                st.session_state['ob_contract_text'] = ''
+
+        contract_text = st.text_area(
+            _t("contract.input_label"),
+            value=st.session_state.get('ob_contract_text', ''),
+            height=200,
+            placeholder=_t("onboarding.contract_placeholder"),
+            key="ob_contract_input"
+        )
+
+        if st.button(_t("contract.review_button"), key="ob_review", type="primary"):
+            if not contract_text.strip():
+                st.warning(_t("contract.empty_warning"))
+            else:
+                with st.spinner(_t("contract.reviewing")):
+                    result = check_contract(contract_text, use_ai=False, lang=lang)
+                st.session_state["ob_contract_result"] = result
+                st.session_state["onboarding_contract_reviewed"] = True
+
+        if st.session_state.get("onboarding_contract_reviewed") and "ob_contract_result" in st.session_state:
+            result = st.session_state["ob_contract_result"]
+            st.markdown(f"#### {_t('onboarding.review_result')}")
+            st.markdown(f"**{_t('contract.summary_label')}**: {result.get('summary', '')}")
+            issues = result.get("issues", [])
+            if issues:
+                for issue in issues:
+                    severity = issue.get("severity", "low")
+                    sev_color = {"high": "#d9364c", "medium": "#f5a623", "low": "#009c48"}.get(severity, "#6c7378")
+                    st.markdown(f"- <span style='color:{sev_color};font-weight:600;'>[{issue.get('type','')}]</span> {issue.get('description','')}", unsafe_allow_html=True)
+            else:
+                st.success(_t("contract.no_issues"))
+
+        col_prev, col_next = st.columns([1, 4])
+        with col_prev:
+            if st.button(_t("onboarding.prev"), key="ob_prev_2"):
+                st.session_state["onboarding_step"] = 0
+                st.rerun()
+        with col_next:
+            if st.button(_t("onboarding.next"), key="ob_next_2", type="primary", disabled=not st.session_state.get("onboarding_contract_reviewed", False)):
+                st.session_state["onboarding_step"] = 2
+                st.rerun()
+
+    # ===== Step 3: Sample Fee Payment =====
+    elif current_step == 2:
+        st.markdown(f"### {_t('onboarding.step3_title')}")
+        st.caption(_t("onboarding.step3_desc"))
+
+        col1, col2 = st.columns(2)
+        with col1:
+            sample_amount = st.number_input(_t("onboarding.sample_amount"), min_value=0.0, value=ob_data.get("sample_amount", 500.0), step=50.0)
+            buyer_name = st.text_input(_t("onboarding.buyer_name"), value=ob_data.get("customer_name", ""))
+        with col2:
+            buyer_email = st.text_input(_t("onboarding.buyer_email"), value=ob_data.get("buyer_email", "buyer@example.com"))
+
+        if st.button(_t("onboarding.create_invoice"), key="ob_create_invoice", type="primary"):
+            with st.spinner(_t("paypal.creating")):
+                invoice = create_and_send_invoice(
+                    payment_type="sample_fee",
+                    buyer_email=buyer_email,
+                    buyer_name=buyer_name,
+                    amount=sample_amount,
+                    currency="USD",
+                    contract_id=f"OB-{ob_data.get('customer_name','DEMO')[:10]}",
+                    use_api=False,
+                    lang=lang,
+                )
+            st.session_state["ob_invoice"] = invoice
+            st.session_state["onboarding_invoice_created"] = True
+            ob_data["sample_amount"] = sample_amount
+            ob_data["buyer_email"] = buyer_email
+            ob_data["buyer_name"] = buyer_name
+
+        if st.session_state.get("onboarding_invoice_created") and "ob_invoice" in st.session_state:
+            invoice = st.session_state["ob_invoice"]
+            if invoice.get("success"):
+                st.success(f"{_t('paypal.invoice_created')} #{invoice.get('invoice_number','')}")
+                st.markdown(f"**{_t('paypal.amount')}**: {invoice.get('currency','USD')} {invoice.get('amount','')}")
+                st.markdown(f"**{_t('paypal.status')}**: {invoice.get('status','')}")
+
+                # Simulate payment button (demo)
+                if not st.session_state.get("onboarding_paid"):
+                    if st.button(_t("paypal.simulate_payment"), key="ob_sim_pay"):
+                        pay_result = simulate_payment_demo(invoice["invoice_id"])
+                        if pay_result.get("success"):
+                            st.session_state["onboarding_paid"] = True
+                            st.success(_t("paypal.payment_success"))
+                            st.rerun()
+                else:
+                    st.success(_t("paypal.payment_success"))
+            else:
+                st.error(f"{_t('paypal.create_failed', error=invoice.get('error',''))}")
+
+        col_prev, col_next = st.columns([1, 4])
+        with col_prev:
+            if st.button(_t("onboarding.prev"), key="ob_prev_3"):
+                st.session_state["onboarding_step"] = 1
+                st.rerun()
+        with col_next:
+            if st.button(_t("onboarding.next"), key="ob_next_3", type="primary", disabled=not st.session_state.get("onboarding_paid", False)):
+                st.session_state["onboarding_step"] = 3
+                st.rerun()
+
+    # ===== Step 4: Shipping & Notifications =====
+    elif current_step == 3:
+        st.markdown(f"### {_t('onboarding.step4_title')}")
+        st.caption(_t("onboarding.step4_desc"))
+
+        if st.button(_t("onboarding.generate_notifications"), key="ob_gen_notif", type="primary"):
+            with st.spinner(_t("notification.generating")):
+                notifications = generate_trade_workflow_notifications(
+                    customer_name=ob_data.get("customer_name", "Demo Customer"),
+                    product=ob_data.get("product", "Iron Ore"),
+                    quantity=ob_data.get("quantity", 100),
+                    amount=ob_data.get("sample_amount", 500),
+                    lang=lang,
+                )
+            st.session_state["ob_notifications"] = notifications
+            st.session_state["onboarding_notifications_generated"] = True
+
+        if st.session_state.get("onboarding_notifications_generated") and "ob_notifications" in st.session_state:
+            notifications = st.session_state["ob_notifications"]
+            st.success(f"{_t('notification.generated')} {len(notifications)}")
+            for i, notif in enumerate(notifications):
+                with st.expander(f"{notif.get('type','')} - {notif.get('title','')}"):
+                    st.markdown(notif.get("content", ""))
+
+        st.markdown("---")
+        col_prev, col_finish = st.columns([1, 4])
+        with col_prev:
+            if st.button(_t("onboarding.prev"), key="ob_prev_4"):
+                st.session_state["onboarding_step"] = 2
+                st.rerun()
+        with col_finish:
+            if st.button(_t("onboarding.finish"), key="ob_finish", type="primary", disabled=not st.session_state.get("onboarding_notifications_generated", False)):
+                st.session_state["onboarding_step"] = 4  # complete
+                st.rerun()
+
+    # ===== Complete Page =====
+    elif current_step == 4:
+        st.balloons()
+        st.markdown(f"### {_t('onboarding.complete_title')}")
+        st.success(_t("onboarding.complete_desc"))
+
+        st.markdown(f"#### {_t('onboarding.summary')}")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric(_t("onboarding.customer_name"), ob_data.get("customer_name", "-"))
+        with col2:
+            st.metric(_t("onboarding.product"), ob_data.get("product", "-"))
+        with col3:
+            st.metric(_t("onboarding.quantity"), f"{ob_data.get('quantity', 0)} t")
+
+        col4, col5 = st.columns(2)
+        with col4:
+            st.metric(_t("onboarding.sample_amount"), f"${ob_data.get('sample_amount', 0)}")
+        with col5:
+            # Trust score (demo calculation)
+            trust_score = 78
+            st.metric(_t("onboarding.trust_score"), f"{trust_score}/100")
+
+        st.markdown("---")
+        if st.button(_t("onboarding.restart"), key="ob_restart", type="primary"):
+            for key in ["onboarding_step", "onboarding_data", "onboarding_contract_reviewed",
+                        "onboarding_invoice_created", "onboarding_paid", "onboarding_notifications_generated",
+                        "ob_contract_result", "ob_invoice", "ob_notifications", "ob_contract_text"]:
+                st.session_state.pop(key, None)
+            st.rerun()
 
 
 # ============================================================

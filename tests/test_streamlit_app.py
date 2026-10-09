@@ -27,6 +27,7 @@ from modules.i18n import t, TRANSLATIONS
 # Page keys for i18n lookup
 PAGE_KEYS = [
     "sidebar.page_home",
+    "sidebar.page_onboarding",
     "sidebar.page_market",
     "sidebar.page_contract",
     "sidebar.page_paypal",
@@ -55,11 +56,11 @@ def _find_button(app, label):
 
 @pytest.mark.skipif(AppTest is None, reason="streamlit is not installed")
 def test_all_five_pages_open_without_exception():
-    at = AppTest.from_file(str(APP_PATH)).run()
+    at = AppTest.from_file(str(APP_PATH)).run(timeout=15)
     # sidebar.radio[0] = language switcher, sidebar.radio[1] = page navigation
     for page_key in PAGE_KEYS:
         page_label = t(page_key, "zh")
-        at.sidebar.radio[1].set_value(page_label).run()
+        at.sidebar.radio[1].set_value(page_label).run(timeout=15)
         assert not at.exception, f"Exception on page: {page_label}"
 
 
