@@ -140,6 +140,13 @@ st.markdown("""
     section[data-testid="stSidebar"] .stRadio label:hover {
         background: var(--pp-blue-pale);
     }
+    /* Radio selected dot - PayPal blue instead of Streamlit red */
+    section[data-testid="stSidebar"] [data-baseweb="radio"] div[aria-checked="true"] div {
+        background-color: var(--pp-blue) !important;
+    }
+    section[data-testid="stSidebar"] [data-baseweb="radio"] div[aria-checked="true"] {
+        border-color: var(--pp-blue) !important;
+    }
 
     /* ===== Buttons - PayPal Style ===== */
     .stButton > button {
