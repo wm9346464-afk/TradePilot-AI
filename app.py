@@ -47,6 +47,7 @@ from modules.notification import generate_notification, generate_trade_workflow_
 from modules.config import get_llm_config_status, get_paypal_config_status
 from modules.i18n import t
 from modules.webhook_handler import get_webhook_handler
+from modules.trust_score import calculate_trust_score, get_trust_level_color
 
 
 logger = logging.getLogger(__name__)
@@ -721,9 +722,51 @@ elif page == _t("sidebar.page_onboarding"):
         with col4:
             st.metric(_t("onboarding.sample_amount"), f"${ob_data.get('sample_amount', 0)}")
         with col5:
-            # Trust score (demo calculation)
-            trust_score = 78
-            st.metric(_t("onboarding.trust_score"), f"{trust_score}/100")
+            # Real trust score calculation
+            contract_result = st.session_state.get("ob_contract_result", {})
+            issues = contract_result.get("issues", [])
+            high_risk_count = sum(1 for i in issues if i.get("severity") == "高")
+            # Determine market volatility from signal
+            market_vol = "medium"
+            try:
+                sig_bundle = _cached_get_all_signals(lang=lang)
+                sigs = sig_bundle.get("signals", {})
+                if sigs:
+                    first_sig = list(sigs.values())[0]
+                    conf = first_sig.get("confidence", "medium")
+                    market_vol = {"high": "high", "medium": "medium", "low": "low"}.get(conf, "medium")
+            except Exception:
+                pass
+            trust_result = calculate_trust_score(
+                contract_issues_count=len(issues),
+                contract_high_risk_count=high_risk_count,
+                has_payment_history=st.session_state.get("onboarding_paid", False),
+                payment_on_time_rate=1.0 if st.session_state.get("onboarding_paid") else 0.5,
+                market_volatility=market_vol,
+                company_name_provided=bool(ob_data.get("customer_name")),
+                company_contact_provided=bool(ob_data.get("buyer_email")),
+                transaction_amount=ob_data.get("sample_amount", 500),
+                lang=lang,
+            )
+            trust_color = get_trust_level_color(trust_result.level)
+            st.metric(_t("onboarding.trust_score"), f"{trust_result.total}/100")
+            st.markdown(f"<div style='text-align:center;color:{trust_color};font-weight:600;'>{trust_result.level}信任 / {trust_result.level_en if lang=='en' else trust_result.level}</div>", unsafe_allow_html=True)
+
+        # Trust score dimension breakdown
+        st.markdown("---")
+        st.markdown(f"#### {_t('onboarding.trust_score')} - {_t('onboarding.summary')}")
+        dim_cols = st.columns(5)
+        for i, (dim_key, dim_data) in enumerate(trust_result.dimensions.items()):
+            with dim_cols[i]:
+                pct = int(dim_data["score"] / dim_data["max"] * 100)
+                st.markdown(f"<div style='text-align:center;'><div style='font-size:1.5rem;font-weight:bold;color:#0070ba;'>{dim_data['score']}/{dim_data['max']}</div><div style='font-size:0.8rem;color:#6c7378;'>{dim_data['label']}</div><div style='background:#e1e4e5;height:6px;border-radius:3px;margin-top:4px;'><div style='background:#0070ba;height:6px;border-radius:3px;width:{pct}%;'></div></div></div>", unsafe_allow_html=True)
+
+        # Recommendations
+        if trust_result.recommendations:
+            st.markdown("---")
+            st.markdown(f"#### {'交易建议' if lang == 'zh' else 'Recommendations'}")
+            for rec in trust_result.recommendations:
+                st.markdown(f"- {rec}")
 
         st.markdown("---")
         if st.button(_t("onboarding.restart"), key="ob_restart", type="primary"):
