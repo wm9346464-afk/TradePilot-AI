@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import base64
 import json
+import zlib
 import logging
 from datetime import datetime
 from typing import Optional
