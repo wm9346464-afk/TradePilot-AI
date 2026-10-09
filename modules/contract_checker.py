@@ -380,6 +380,142 @@ def basic_text_check(contract_text: str) -> list:
 
 
 # ============================================================
+# Risk Clause Identification (rule-based, no API needed)
+# ============================================================
+
+def risk_clause_check(contract_text: str) -> list:
+    """
+    风险条款识别（规则匹配，不依赖API）
+    识别关键条款是否存在，并评估内容合理性。
+
+    检查维度：
+    1. 不可抗力条款 - 是否存在，范围是否合理
+    2. 违约金条款 - 是否存在，比例是否合理
+    3. 交货期条款 - 是否明确
+    4. 付款条件 - 是否明确
+    5. 争议解决 - 是否约定管辖
+    6. 质量标准 - 是否明确
+    7. 包装条款 - 是否存在
+    8. 运输/保险 - 是否明确责任
+    """
+    issues = []
+    text = contract_text
+
+    # 1. 不可抗力条款
+    has_force_majeure = bool(re.search(r"不可抗力|force majeure", text, re.IGNORECASE))
+    if not has_force_majeure:
+        issues.append({
+            "type": "风险提示",
+            "severity": "高",
+            "original": "缺少不可抗力条款",
+            "suggestion": "添加不可抗力条款，明确范围、通知义务和免责范围",
+            "description": "合同中未找到不可抗力条款。大宗商品贸易受自然灾害、政策变化、疫情等影响较大，缺少不可抗力条款可能导致一方在不可预见事件中仍需承担违约责任。",
+        })
+    else:
+        # 检查不可抗力范围是否过宽
+        if re.search(r"不可抗力.*包括.*市场变化|市场波动.*不可抗力", text):
+            issues.append({
+                "type": "风险提示",
+                "severity": "中",
+                "original": "不可抗力范围可能过宽",
+                "suggestion": "将市场价格波动排除在不可抗力范围外",
+                "description": "合同中将市场变化/价格波动纳入不可抗力范围。通常市场风险属于商业风险，不应纳入不可抗力，否则可能被滥用为违约借口。",
+            })
+
+    # 2. 违约金条款
+    has_penalty = bool(re.search(r"违约金|滞纳金|penalty|liquidated damages", text, re.IGNORECASE))
+    if not has_penalty:
+        issues.append({
+            "type": "风险提示",
+            "severity": "高",
+            "original": "缺少违约金条款",
+            "suggestion": "添加违约金条款，约定逾期付款/逾期交货的违约金比例",
+            "description": "合同中未找到违约金条款。缺少违约金约定时，守约方只能主张实际损失，举证困难且赔偿有限。建议约定逾期付款每日万分之五、逾期交货每日千分之一等标准。",
+        })
+    else:
+        # 检查违约金比例是否过高
+        penalty_matches = re.findall(r"违约金[^\d]*(\d+(?:\.\d+)?)\s*%", text)
+        for pct in penalty_matches:
+            pct_val = float(pct)
+            if pct_val > 30:
+                issues.append({
+                    "type": "风险提示",
+                    "severity": "中",
+                    "original": f"违约金比例{pct}%可能过高",
+                    "suggestion": "将违约金比例调整至合理范围（一般不超过损失的30%）",
+                    "description": f"合同约定违约金比例为{pct}%。根据《民法典》，约定的违约金过分高于造成的损失的，人民法院或仲裁机构可以根据当事人请求予以适当减少。超过30%可能被认定为过高。",
+                })
+
+    # 3. 交货期条款
+    has_delivery = bool(re.search(r"交货期|交付时间|发货时间|delivery|shipment", text, re.IGNORECASE))
+    if not has_delivery:
+        issues.append({
+            "type": "条款完整性",
+            "severity": "高",
+            "original": "缺少交货期条款",
+            "suggestion": "明确约定交货时间、地点和方式",
+            "description": "合同中未找到明确的交货期条款。大宗商品贸易中交货期直接影响价格和库存，缺少明确约定容易产生争议。",
+        })
+
+    # 4. 付款条件
+    has_payment = bool(re.search(r"付款方式|支付方式|付款条件|payment terms|T/T|L/C", text, re.IGNORECASE))
+    if not has_payment:
+        issues.append({
+            "type": "条款完整性",
+            "severity": "高",
+            "original": "缺少付款条件条款",
+            "suggestion": "明确约定付款方式、时间和比例",
+            "description": "合同中未找到明确的付款条件条款。应约定付款方式（电汇/信用证/PayPal等）、付款时间（预付/货到/分期）和各阶段比例。",
+        })
+
+    # 5. 争议解决
+    has_dispute = bool(re.search(r"争议解决|管辖|仲裁|诉讼|dispute resolution|jurisdiction|arbitration", text, re.IGNORECASE))
+    if not has_dispute:
+        issues.append({
+            "type": "风险提示",
+            "severity": "中",
+            "original": "缺少争议解决条款",
+            "suggestion": "约定管辖法院或仲裁机构",
+            "description": "合同中未找到争议解决条款。发生争议时可能面临管辖法院不确定、诉讼成本增加等问题。建议约定原告所在地法院管辖或明确仲裁机构。",
+        })
+
+    # 6. 质量标准
+    has_quality = bool(re.search(r"质量标准|质量要求|验收标准|quality standard|specification", text, re.IGNORECASE))
+    if not has_quality:
+        issues.append({
+            "type": "条款完整性",
+            "severity": "中",
+            "original": "缺少质量标准条款",
+            "suggestion": "明确产品质量标准和验收方式",
+            "description": "合同中未找到明确的质量标准条款。大宗商品（如铁矿石、钢材）应明确品位、化学成分、物理指标等质量标准，以及验收机构和异议期。",
+        })
+
+    # 7. 包装条款
+    has_packaging = bool(re.search(r"包装|packaging|packing", text, re.IGNORECASE))
+    if not has_packaging:
+        issues.append({
+            "type": "条款完整性",
+            "severity": "低",
+            "original": "缺少包装条款",
+            "suggestion": "明确包装方式和费用承担",
+            "description": "合同中未找到包装条款。大宗商品运输中包装方式影响货物安全和运输成本，建议明确包装标准和费用承担方。",
+        })
+
+    # 8. 运输/保险
+    has_shipping = bool(re.search(r"运输|运费|保险|shipping|freight|insurance|FOB|CIF|CFR", text, re.IGNORECASE))
+    if not has_shipping:
+        issues.append({
+            "type": "条款完整性",
+            "severity": "中",
+            "original": "缺少运输/保险条款",
+            "suggestion": "明确贸易术语（FOB/CIF等）、运输方式和保险责任",
+            "description": "合同中未找到运输或保险条款。应明确贸易术语（FOB/CIF/CFR等）、运输方式、运费承担和保险责任，避免货物在运输途中的风险归属不清。",
+        })
+
+    return issues
+
+
+# ============================================================
 # AI深度审查（调用大模型API）
 # ============================================================
 
@@ -678,6 +814,8 @@ def check_contract(
 
     # 1. 基础检查（始终运行）
     all_issues = basic_text_check(contract_text)
+    # 1.1 风险条款识别（始终运行，规则匹配）
+    all_issues.extend(risk_clause_check(contract_text))
     mode = "基础规则检查"
     mode_code = "RULE_ONLY"
     mode_label = "基础规则检查"
