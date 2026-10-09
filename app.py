@@ -46,6 +46,7 @@ from modules.paypal_payment import (
 from modules.notification import generate_notification, generate_trade_workflow_notifications
 from modules.config import get_llm_config_status, get_paypal_config_status
 from modules.i18n import t
+from modules.webhook_handler import get_webhook_handler
 
 
 logger = logging.getLogger(__name__)
@@ -633,10 +634,26 @@ elif page == _t("sidebar.page_onboarding"):
                         pay_result = simulate_payment_demo(invoice["invoice_id"])
                         if pay_result.get("success"):
                             st.session_state["onboarding_paid"] = True
+                            # Auto-trigger webhook handling
+                            wh = get_webhook_handler()
+                            wh_result = wh.simulate_invoice_paid_event(
+                                invoice_id=invoice.get("invoice_id", "DEMO"),
+                                amount=invoice.get("amount", 0),
+                                currency=invoice.get("currency", "USD"),
+                                invoice_number=invoice.get("invoice_number", "DEMO-001"),
+                            )
+                            st.session_state["ob_webhook_result"] = wh_result
                             st.success(_t("paypal.payment_success"))
                             st.rerun()
                 else:
                     st.success(_t("paypal.payment_success"))
+                    # Show webhook auto-triggered actions
+                    if "ob_webhook_result" in st.session_state:
+                        wh_result = st.session_state["ob_webhook_result"]
+                        if wh_result.get("auto_triggered"):
+                            st.info(_t("paypal.webhook_auto_triggered"))
+                            for action in wh_result.get("actions", [])[1:]:  # skip first line (invoice paid)
+                                st.markdown(f"- {action}")
             else:
                 st.error(f"{_t('paypal.create_failed', error=invoice.get('error',''))}")
 
@@ -1174,6 +1191,62 @@ elif page == _t("sidebar.page_paypal"):
             st.rerun()
     else:
         st.info(_t("paypal.no_invoices"))
+
+    # Webhooks section
+    st.markdown("---")
+    st.markdown(f"### {_t('paypal.webhook_title')}")
+    st.caption(_t("paypal.webhook_desc"))
+
+    webhook_handler = get_webhook_handler()
+
+    col_webhook1, col_webhook2 = st.columns([2, 1])
+    with col_webhook1:
+        with st.expander(_t("paypal.webhook_config_title")):
+            st.markdown(_t("paypal.webhook_config_step1"))
+            st.markdown(_t("paypal.webhook_config_step2"))
+            st.markdown(_t("paypal.webhook_config_step3"))
+            st.info("modules/webhook_handler.py 已实现完整的签名验证和事件处理逻辑，生产环境部署为HTTP端点即可。" if st.session_state.get("lang", "zh") == "zh" else "modules/webhook_handler.py implements full signature verification and event handling. Deploy as an HTTP endpoint in production.")
+
+    with col_webhook2:
+        if st.button(_t("paypal.webhook_simulate"), key="simulate_webhook", type="primary"):
+            # Get latest invoice for demo
+            invoices = list_invoices_demo()
+            if invoices:
+                latest = invoices[-1]
+                result = webhook_handler.simulate_invoice_paid_event(
+                    invoice_id=latest.get("invoice_id", "DEMO"),
+                    amount=latest.get("total", latest.get("amount", 0)),
+                    currency=latest.get("currency", "USD"),
+                    invoice_number=latest.get("invoice_number", "DEMO-001"),
+                )
+                st.session_state["last_webhook_result"] = result
+            else:
+                result = webhook_handler.simulate_invoice_paid_event(
+                    invoice_id="DEMO-INV-001",
+                    amount=500.0,
+                    currency="USD",
+                    invoice_number="DEMO-001",
+                )
+                st.session_state["last_webhook_result"] = result
+
+    if "last_webhook_result" in st.session_state:
+        result = st.session_state["last_webhook_result"]
+        if result.get("auto_triggered"):
+            st.success(_t("paypal.webhook_auto_triggered"))
+            st.markdown(f"**{_t('paypal.payment_status')}**: PAID")
+            st.markdown(f"**{_t('paypal.amount')}**: {result.get('currency', 'USD')} {result.get('amount', '0')}")
+            st.markdown("**Auto-triggered actions:**")
+            for action in result.get("actions", []):
+                st.markdown(f"- {action}")
+
+    # Webhook event log
+    st.markdown(f"#### {_t('paypal.webhook_event_log')}")
+    event_log = webhook_handler.get_event_log()
+    if event_log:
+        df_events = pd.DataFrame(event_log)
+        st.dataframe(df_events, use_container_width=True)
+    else:
+        st.info(_t("paypal.webhook_no_events"))
 
 
 # ============================================================

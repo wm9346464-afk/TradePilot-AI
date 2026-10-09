@@ -277,6 +277,18 @@ TRANSLATIONS = {
         "paypal.clear_invoices": "清空当前会话发票",
         "paypal.no_invoices": "暂无发票记录，请先创建发票",
 
+        # --- PayPal Webhooks ---
+        "paypal.webhook_title": "Webhooks 自动付款确认",
+        "paypal.webhook_desc": "付款成功后，PayPal 通过 Webhook 自动通知系统，触发后续流程（更新状态、生成发货通知、通知卖方），无需手动刷新。",
+        "paypal.webhook_config_title": "Webhook 配置说明",
+        "paypal.webhook_config_step1": "1. 在 PayPal Developer Dashboard 创建 Webhook，填写你的服务器 URL",
+        "paypal.webhook_config_step2": "2. 选择 INVOICING.INVOICE.PAID 等事件",
+        "paypal.webhook_config_step3": "3. 将 Webhook ID 和 Secret 配置到环境变量",
+        "paypal.webhook_simulate": "模拟付款成功 Webhook 事件",
+        "paypal.webhook_event_log": "Webhook 事件日志",
+        "paypal.webhook_no_events": "暂无 Webhook 事件",
+        "paypal.webhook_auto_triggered": "Webhook 自动触发后续动作",
+
         # --- Notification Page ---
         "notification.title": "📧 客户通知",
         "notification.subtitle": "贸易全流程自动通知生成 | 行情提醒 · 合同通知 · 付款通知 · 到账确认 · 发货通知 · 收货提醒 · 售后跟进",
@@ -614,6 +626,18 @@ TRANSLATIONS = {
         "paypal.col_created_at": "Created At",
         "paypal.clear_invoices": "Clear Current Session Invoices",
         "paypal.no_invoices": "No invoice records, please create an invoice first",
+
+        # --- PayPal Webhooks ---
+        "paypal.webhook_title": "Webhooks Auto Payment Confirmation",
+        "paypal.webhook_desc": "After successful payment, PayPal notifies the system via Webhook, automatically triggering subsequent workflows (status update, shipping notification, seller notification) - no manual refresh needed.",
+        "paypal.webhook_config_title": "Webhook Configuration Guide",
+        "paypal.webhook_config_step1": "1. Create a Webhook in PayPal Developer Dashboard with your server URL",
+        "paypal.webhook_config_step2": "2. Select events like INVOICING.INVOICE.PAID",
+        "paypal.webhook_config_step3": "3. Configure Webhook ID and Secret in environment variables",
+        "paypal.webhook_simulate": "Simulate Payment Success Webhook Event",
+        "paypal.webhook_event_log": "Webhook Event Log",
+        "paypal.webhook_no_events": "No webhook events yet",
+        "paypal.webhook_auto_triggered": "Webhook auto-triggered subsequent actions",
 
         # --- Notification Page ---
         "notification.title": "📧 Customer Notifications",
