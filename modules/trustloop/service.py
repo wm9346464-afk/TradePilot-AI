@@ -34,6 +34,8 @@ from .models import (
 from .money import Money, money
 from .policy import PolicyEngine, PolicyViolation
 from .state_machine import DealStateMachine
+from .replay import RunBundle
+from .passport import verify_passport
 
 
 class TrustLoopService:
@@ -552,6 +554,7 @@ class TrustLoopService:
             else []
         )
         passport = TrustPassport(
+            run_id=run.run_id,
             deal_id=run.deal.deal_id,
             buyer_id=run.deal.buyer.buyer_id,
             seller_id=run.deal.seller.seller_id,
@@ -583,6 +586,23 @@ class TrustLoopService:
         run = run.model_copy(update={"passport": passport})
         self._save(run)
         return passport
+
+    def export_run_bundle(self, run_id: str) -> dict:
+        bundle = RunBundle(run=self.get_run(run_id), events=self.get_audit_events(run_id))
+        return bundle.model_dump(mode="json")
+
+    def restore_run_bundle(self, bundle: dict) -> DealRun:
+        parsed = RunBundle.model_validate(bundle)
+        audit = AuditLog.from_events(parsed.run.run_id, parsed.events)
+        self._runs[parsed.run.run_id] = parsed.run
+        self._audits[parsed.run.run_id] = audit
+        return parsed.run
+
+    def verify_trust_passport(self, run_id: str):
+        run = self.get_run(run_id)
+        if not run.passport:
+            raise PolicyViolation("Trust Passport has not been issued")
+        return verify_passport(run.passport, self.get_audit_events(run_id))
 
     def run_full_demo(self, deal_input: DealInput) -> DealRun:
         run = self.start_case(deal_input)

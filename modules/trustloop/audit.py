@@ -83,3 +83,13 @@ class AuditLog:
             previous = event.event_hash
         return True
 
+    @classmethod
+    def from_events(cls, run_id: str, events: list[AuditEvent]) -> "AuditLog":
+        log = cls(run_id)
+        log.events = list(events)
+        if any(event.run_id != run_id for event in log.events):
+            raise ValueError("Audit event belongs to a different run")
+        if not log.verify_chain():
+            raise ValueError("Audit event hash chain is invalid")
+        return log
+

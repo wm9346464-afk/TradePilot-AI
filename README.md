@@ -52,6 +52,7 @@ The system combines:
 - **PayPal execution:** invoices are created, sent, and queried through the PayPal REST API.
 - **Verified progression:** no optimistic UI states; only `PAID` unlocks the next stage.
 - **Auditable trust evidence:** approval, payment, FX, and agent decision events are packaged in a Trust Passport.
+- **Portable replay:** the complete run and audit chain can be exported as a replay bundle.
 
 ---
 
@@ -240,7 +241,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 47 automated tests passing;
+- 49 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
@@ -270,7 +271,7 @@ tests/                         Unit, integration and AppTest coverage
 - Buyer/seller agent negotiation is a planned enhancement.
 - Persistent event storage and replay across process restarts are planned.
 - Real webhook signature verification is not enabled; the legacy page is explicitly a simulation.
-- Trust Passport supports JSON; PDF export and a public verification page are planned.
+- Trust Passport supports JSON, integrity verification, and replay export; PDF and a public verification page are planned.
 - The project is a Sandbox/Demo and does not move real money.
 
 ---

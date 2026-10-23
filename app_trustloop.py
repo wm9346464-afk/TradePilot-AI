@@ -491,6 +491,14 @@ with right:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if passport:
+        verification = service.verify_trust_passport(run.run_id) if service else None
+        if verification and verification.valid:
+            st.success("Trust Passport integrity verified.")
+        elif verification:
+            st.error(verification.message)
+        if verification:
+            with st.expander("Passport verification checks"):
+                st.json(verification.checks)
         st.download_button(
             "Download Trust Passport JSON",
             data=json.dumps(passport.model_dump(mode="json"), indent=2, ensure_ascii=False),
@@ -498,6 +506,15 @@ with right:
             mime="application/json",
             use_container_width=True,
         )
+        if service:
+            replay_bundle = service.export_run_bundle(run.run_id)
+            st.download_button(
+                "Download Replay Bundle JSON",
+                data=json.dumps(replay_bundle, indent=2, ensure_ascii=False),
+                file_name=f"{run.run_id}-replay.json",
+                mime="application/json",
+                use_container_width=True,
+            )
 
 st.markdown("---")
 st.markdown("### Audit timeline")

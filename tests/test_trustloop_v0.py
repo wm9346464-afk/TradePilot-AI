@@ -156,3 +156,27 @@ def test_refresh_payment_advances_only_when_paypal_reports_paid():
     assert milestone.status == MilestoneStatus.PAID
     assert milestone.payment_id is not None
 
+
+def test_run_bundle_round_trip_preserves_audit_and_passport():
+    service = build_demo_service()
+    run = service.run_full_demo(demo_deal_input())
+    bundle = service.export_run_bundle(run.run_id)
+
+    restored_service = build_demo_service()
+    restored = restored_service.restore_run_bundle(bundle)
+
+    assert restored.run_id == run.run_id
+    assert restored.state == DealState.PASSPORT_ISSUED
+    assert restored.passport is not None
+    assert restored_service.verify_trust_passport(restored.run_id).valid is True
+
+
+def test_run_bundle_rejects_tampered_audit_event():
+    service = build_demo_service()
+    run = service.run_full_demo(demo_deal_input())
+    bundle = service.export_run_bundle(run.run_id)
+    bundle["events"][0]["event_hash"] = "0" * 64
+
+    with pytest.raises(ValueError, match="hash chain"):
+        build_demo_service().restore_run_bundle(bundle)
+

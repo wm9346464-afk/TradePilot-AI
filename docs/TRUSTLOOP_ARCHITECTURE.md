@@ -58,6 +58,7 @@ Implemented:
 - Ordered agent-requested invoice tools are executed through a deterministic tool executor.
 - Three-stage Trust Ladder with explicit human approvals.
 - Audit hash chain and Trust Passport.
+- Trust Passport integrity verification and portable replay bundles.
 - Deal Room with Fake and REST paths.
 
 Requires final external delivery:
