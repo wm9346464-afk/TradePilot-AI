@@ -9,6 +9,7 @@ import os
 import streamlit as st
 
 from modules.trustloop.service import build_runtime_service, demo_deal_input
+from modules.trustloop.enums import DealState
 
 
 st.set_page_config(
@@ -104,16 +105,21 @@ with left:
         "The agent proposes a staged trust ladder instead of unsecured credit."
     )
 with right:
-    run_demo = st.button("Run 90-second deal", type="primary", use_container_width=True)
+    run_demo = st.button("Review deal & build ladder", type="primary", use_container_width=True)
 
 if run_demo:
-    with st.spinner("Reviewing contract, planning milestones, and simulating PayPal..."):
+    with st.spinner("Reviewing contract and building the trust ladder..."):
         service = build_runtime_service(
             paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
             use_llm=True,
         )
-        run = service.run_full_demo(demo_deal_input())
+        run = service.start_case(demo_deal_input())
+        from modules.contract_checker import SAMPLE_CONTRACT
+
+        run = service.review_contract(run.run_id, SAMPLE_CONTRACT, use_ai=False)
+        run = service.propose_plan(run.run_id, invoice_currency="USD")
         events = service.get_audit_events(run.run_id)
+        st.session_state["trustloop_service"] = service
         st.session_state["trustloop_run"] = run
         st.session_state["trustloop_events"] = events
 
@@ -135,6 +141,48 @@ if not run:
         unsafe_allow_html=True,
     )
     st.stop()
+
+service = st.session_state.get("trustloop_service")
+if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
+    active = next(
+        (
+            item
+            for item in run.plan.milestones
+            if item.milestone_id == run.active_milestone_id
+        ),
+        None,
+    )
+    if active:
+        st.markdown(
+            f"""<div class="tp-card">
+            <h3>Human approval required</h3>
+            <p><strong>Stage {active.sequence}: {html.escape(active.name)}</strong></p>
+            <p>Amount: <strong>{active.amount.format()}</strong></p>
+            <p class="tp-muted">Approving this stage authorizes invoice creation and sending for this exact amount and currency.</p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            f"Approve stage {active.sequence} & simulate PayPal",
+            type="primary",
+            use_container_width=True,
+        ):
+            with st.spinner("Creating invoice, simulating payment, and unlocking the next stage..."):
+                run = service.approve_plan(run.run_id)
+                run = service.create_invoice(run.run_id)
+                run = service.send_invoice(run.run_id)
+                run = service.simulate_payment(run.run_id)
+                run = service.complete_milestone(run.run_id)
+                if run.plan and any(
+                    item.status.value != "PAID" for item in run.plan.milestones
+                ):
+                    run = service.request_next_milestone(run.run_id)
+                else:
+                    service.issue_passport(run.run_id)
+                    run = service.get_run(run.run_id)
+                st.session_state["trustloop_run"] = run
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+                st.rerun()
 
 passport = run.passport
 fx = run.plan.settlement_plan.fx_snapshot if run.plan else None
