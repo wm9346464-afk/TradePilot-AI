@@ -281,6 +281,7 @@ tests/                         Unit, integration and AppTest coverage
 - [Sandbox setup](docs/SANDBOX_SETUP.md)
 - [Demo script](docs/DEMO_SCRIPT.md)
 - [Judge guide](docs/JUDGE_GUIDE.md)
+- [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Security](SECURITY.md)
 
 ---
