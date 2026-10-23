@@ -35,11 +35,25 @@ def _get_env(name: str) -> str:
     return str(value).strip() if value is not None else ""
 
 
+# PayPal 沙箱账号邮箱固定使用 example.com 域名（如 sb-xxx@business.example.com）。
+# 这些是真实可用的沙箱账号，不是占位符，必须放行，否则配好真实凭据也永远被判为未配置。
+_SANDBOX_EMAIL_RE = re.compile(
+    r"[a-z0-9._%+-]+@(business|personal|facilitator)\.example\.com", re.IGNORECASE
+)
+
+
+def is_sandbox_account_email(value) -> bool:
+    """判断是否 PayPal 沙箱账号邮箱（business/personal/facilitator.example.com）。"""
+    return bool(_SANDBOX_EMAIL_RE.fullmatch(str(value or "").strip()))
+
+
 def is_placeholder(value) -> bool:
     """判断配置值是否为空或常见占位符。"""
     text = str(value or "").strip()
     if not text:
         return True
+    if is_sandbox_account_email(text):
+        return False
     lowered = text.lower()
     if "your_" in lowered or lowered.endswith("_here"):
         return True

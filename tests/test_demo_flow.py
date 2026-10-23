@@ -14,6 +14,7 @@ from modules.config import (
     get_llm_config_status,
     get_paypal_config_status,
     get_signal_config_status,
+    is_sandbox_account_email,
     is_placeholder,
 )
 from modules.contract_checker import (
@@ -92,6 +93,14 @@ def test_env_example_copy_keeps_all_modules_in_demo_mode(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "your_llm_api_key_here")
     assert get_paypal_config_status()["state"] == "not_configured"
     assert get_llm_config_status()["state"] == "not_configured"
+
+
+def test_paypal_sandbox_account_email_is_not_a_placeholder():
+    assert is_sandbox_account_email("sb-abc123@business.example.com") is True
+    assert is_sandbox_account_email("sb-abc123@personal.example.com") is True
+    assert is_sandbox_account_email("merchant@my-company.com") is False
+    assert is_placeholder("sb-abc123@business.example.com") is False
+    assert is_placeholder("buyer@example.com") is True
 
 
 def test_demo_signal_provider_returns_structured_bundle_and_chart():

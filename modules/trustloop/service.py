@@ -13,7 +13,7 @@ from .agent.tools import ToolRegistry, build_default_tool_registry
 from .audit import AuditEvent, AuditLog
 from .currency import CurrencyPolicy
 from .enums import DealState, MilestoneStatus, RunMode
-from .fx import FixtureFxRateProvider
+from .fx import build_fx_provider
 from .models import (
     ActionPlan,
     ApprovalRecord,
@@ -645,7 +645,7 @@ def build_runtime_service(
     from .gateways.factory import build_paypal_gateway
     from .policy import PolicyConfig
 
-    fx_provider = FixtureFxRateProvider()
+    fx_provider = build_fx_provider()
     policy = PolicyEngine(PolicyConfig(), fx_provider)
     planner = LLMPlanner() if use_llm else RuleBasedPlanner()
     return TrustLoopService(

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal, Protocol
 
+import requests
 from pydantic import BaseModel, ConfigDict
 
 from .currency import normalize_currency_code
@@ -84,4 +85,82 @@ class FixtureFxRateProvider:
             expires_at=now + self.ttl,
             mode="DEMO_FIXTURE",
         )
+
+
+class HttpFxRateProvider:
+    """No-key reference-rate provider with an explicit offline fallback."""
+
+    def __init__(
+        self,
+        *,
+        api_url: str = "https://api.frankfurter.app/latest",
+        fallback: FxRateProvider | None = None,
+        timeout_seconds: int = 10,
+        ttl_hours: int = 12,
+        get=requests.get,
+    ) -> None:
+        self.api_url = api_url.rstrip("/")
+        self.fallback = fallback or FixtureFxRateProvider()
+        self.timeout_seconds = timeout_seconds
+        self.ttl = timedelta(hours=ttl_hours)
+        self._get = get
+
+    def get_rate(self, base: str, quote: str) -> FxSnapshot:
+        base_code = normalize_currency_code(base)
+        quote_code = normalize_currency_code(quote)
+        if base_code == quote_code:
+            now = datetime.now(timezone.utc)
+            return FxSnapshot(
+                base_currency=base_code,
+                quote_currency=quote_code,
+                rate=Decimal("1"),
+                source="identity",
+                observed_at=now,
+                expires_at=now + self.ttl,
+                mode="LIVE",
+            )
+        try:
+            response = self._get(
+                self.api_url,
+                params={"from": base_code, "to": quote_code},
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            data = response.json()
+            rate = data.get("rates", {}).get(quote_code)
+            if rate is None:
+                raise ValueError(f"FX response missing {quote_code}")
+            rate_date = str(data.get("date", ""))
+            observed_at = (
+                datetime.fromisoformat(rate_date).replace(tzinfo=timezone.utc)
+                if rate_date
+                else datetime.now(timezone.utc)
+            )
+            return FxSnapshot(
+                base_currency=base_code,
+                quote_currency=quote_code,
+                rate=Decimal(str(rate)),
+                source="Frankfurter reference rate",
+                observed_at=observed_at,
+                expires_at=datetime.now(timezone.utc) + self.ttl,
+                mode="LIVE",
+            )
+        except Exception:
+            snapshot = self.fallback.get_rate(base_code, quote_code)
+            return snapshot.model_copy(
+                update={
+                    "source": f"DEMO_FIXTURE fallback after FX API failure ({snapshot.source})",
+                }
+            )
+
+
+def build_fx_provider(mode: str | None = None) -> FxRateProvider:
+    import os
+
+    selected = str(mode or os.getenv("FX_PROVIDER", "fixture")).strip().lower()
+    if selected in {"live", "http", "frankfurter"}:
+        return HttpFxRateProvider(fallback=FixtureFxRateProvider())
+    if selected in {"fixture", "demo", "offline"}:
+        return FixtureFxRateProvider()
+    raise ValueError(f"Unsupported FX_PROVIDER: {selected}")
 

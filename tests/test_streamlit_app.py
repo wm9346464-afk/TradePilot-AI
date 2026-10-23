@@ -118,6 +118,11 @@ def test_contract_page_loads_sample_and_reviews():
 def test_paypal_demo_page_creates_invoice_and_clears():
     at = AppTest.from_file(str(APP_PATH)).run()
     at.sidebar.radio[1].set_value(t("sidebar.page_paypal", "zh")).run()
+    use_api = next(
+        item for item in at.checkbox if item.label == t("paypal.use_api", "zh")
+    )
+    if use_api.value:
+        use_api.set_value(False).run()
     _find_button(at, t("paypal.create_send", "zh")).click().run()
     assert not at.exception
     assert any(t("paypal.success_demo", "zh") in item.value for item in at.success)

@@ -8,6 +8,7 @@ from modules.trustloop.currency import CurrencyPolicy
 from modules.trustloop.enums import DealState, MilestoneStatus
 from modules.trustloop.gateways.paypal import CreateInvoiceRequest
 from modules.trustloop.gateways.fake_paypal import FakePayPalGateway
+from modules.trustloop.fx import FixtureFxRateProvider, HttpFxRateProvider
 from modules.trustloop.money import money
 from modules.trustloop.service import build_demo_service, demo_deal_input
 from modules.trustloop.state_machine import DealStateMachine, InvalidStateTransition
@@ -90,4 +91,43 @@ def test_full_demo_flow_creates_audited_passport():
     assert all(item.status == MilestoneStatus.PAID for item in run.plan.milestones)
     assert service.verify_audit_chain(run.run_id) is True
     assert len(service.get_audit_events(run.run_id)) >= 8
+
+
+class FakeFxResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+def test_http_fx_provider_records_reference_snapshot():
+    provider = HttpFxRateProvider(
+        get=lambda *args, **kwargs: FakeFxResponse(
+            {"date": "2026-10-22", "rates": {"CNY": 6.6743}}
+        )
+    )
+    snapshot = provider.get_rate("USD", "CNY")
+
+    assert snapshot.mode == "LIVE"
+    assert snapshot.source == "Frankfurter reference rate"
+    assert snapshot.rate == Decimal("6.6743")
+    assert snapshot.observed_at.date().isoformat() == "2026-10-22"
+
+
+def test_http_fx_provider_falls_back_on_failure():
+    def fail(*args, **kwargs):
+        raise RuntimeError("network down")
+
+    provider = HttpFxRateProvider(
+        fallback=FixtureFxRateProvider(),
+        get=fail,
+    )
+    snapshot = provider.get_rate("USD", "CNY")
+
+    assert snapshot.mode == "DEMO_FIXTURE"
+    assert "fallback" in snapshot.source.lower()
 
