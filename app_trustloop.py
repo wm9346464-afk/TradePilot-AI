@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import html
 import json
+import os
 
 import streamlit as st
 
-from modules.trustloop.service import build_demo_service, demo_deal_input
+from modules.trustloop.service import build_runtime_service, demo_deal_input
 
 
 st.set_page_config(
@@ -107,7 +108,10 @@ with right:
 
 if run_demo:
     with st.spinner("Reviewing contract, planning milestones, and simulating PayPal..."):
-        service = build_demo_service()
+        service = build_runtime_service(
+            paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
+            use_llm=True,
+        )
         run = service.run_full_demo(demo_deal_input())
         events = service.get_audit_events(run.run_id)
         st.session_state["trustloop_run"] = run

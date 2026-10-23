@@ -8,6 +8,7 @@ from decimal import Decimal
 from modules.contract_checker import SAMPLE_CONTRACT
 
 from .agent.planner import RuleBasedPlanner
+from .agent.llm_planner import LLMPlanner
 from .agent.tools import ToolRegistry, build_default_tool_registry
 from .audit import AuditEvent, AuditLog
 from .currency import CurrencyPolicy
@@ -632,17 +633,27 @@ def demo_deal_input() -> DealInput:
 
 
 def build_demo_service() -> TrustLoopService:
+    return build_runtime_service(paypal_backend="fake", use_llm=False)
+
+
+def build_runtime_service(
+    *,
+    paypal_backend: str = "fake",
+    use_llm: bool = True,
+) -> TrustLoopService:
     from .gateways.contracts import ExistingContractReviewGateway
-    from .gateways.fake_paypal import FakePayPalGateway
+    from .gateways.factory import build_paypal_gateway
     from .policy import PolicyConfig
 
     fx_provider = FixtureFxRateProvider()
     policy = PolicyEngine(PolicyConfig(), fx_provider)
+    planner = LLMPlanner() if use_llm else RuleBasedPlanner()
     return TrustLoopService(
         contract_gateway=ExistingContractReviewGateway(),
-        paypal_gateway=FakePayPalGateway(),
+        paypal_gateway=build_paypal_gateway(paypal_backend),
         fx_provider=fx_provider,
         policy_engine=policy,
         currency_policy=CurrencyPolicy(fallback_currency="USD"),
+        agent_planner=planner,
     )
 
