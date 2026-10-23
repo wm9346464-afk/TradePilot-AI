@@ -52,7 +52,7 @@ The system combines:
 - **PayPal execution:** invoices are created, sent, and queried through the PayPal REST API.
 - **Verified progression:** no optimistic UI states; only `PAID` unlocks the next stage.
 - **Auditable trust evidence:** approval, payment, FX, and agent decision events are packaged in a Trust Passport.
-- **Portable replay:** the complete run and audit chain can be exported as a replay bundle.
+- **Portable replay:** the complete run and audit chain can be exported and loaded read-only from a replay bundle.
 
 ---
 

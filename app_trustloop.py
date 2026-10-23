@@ -63,6 +63,25 @@ with st.sidebar:
         for key in ("trustloop_service", "trustloop_run", "trustloop_events"):
             st.session_state.pop(key, None)
         st.rerun()
+    uploaded_bundle = st.file_uploader(
+        "Load completed Replay Bundle",
+        type=["json"],
+        help="Read-only: loads a completed run and its audit chain.",
+    )
+    if uploaded_bundle and st.button("Open Replay Bundle", use_container_width=True):
+        try:
+            bundle = json.loads(uploaded_bundle.getvalue().decode("utf-8"))
+            replay_service = build_runtime_service(paypal_backend="fake", use_llm=False)
+            replay_run = replay_service.restore_run_bundle(bundle)
+            if replay_run.state != DealState.PASSPORT_ISSUED:
+                st.error("Only completed runs with an issued Passport can be opened as Replay.")
+            else:
+                st.session_state["trustloop_service"] = replay_service
+                st.session_state["trustloop_run"] = replay_run
+                st.session_state["trustloop_events"] = replay_service.get_audit_events(replay_run.run_id)
+                st.rerun()
+        except Exception as exc:
+            st.error(f"Replay bundle rejected: {type(exc).__name__}: {exc}")
     st.markdown("### Judge quick start")
     st.markdown(
         "1. Review the deal\n"
