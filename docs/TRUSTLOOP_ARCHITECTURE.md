@@ -52,6 +52,7 @@ Implemented:
 - Fake PayPal gateway with idempotency.
 - PayPal REST adapter with mocked tests.
 - Live PayPal Sandbox invoice creation, sending, buyer payment and PAID status verification.
+- PayPal official Webhook verification API integration.
 - Structured AgentProposal and restricted tool registry.
 - Deterministic planner and structured LLM planner with fallback.
 - Live DeepSeek structured AgentProposal verified with the full three-stage FakePayPal workflow.

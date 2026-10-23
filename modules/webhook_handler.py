@@ -9,12 +9,9 @@ and register the URL in PayPal Developer Dashboard.
 For Streamlit demo, we simulate webhook events to demonstrate the flow.
 """
 
-import hashlib
-import hmac
-import base64
 import json
-import zlib
 import logging
+import requests
 from datetime import datetime
 from typing import Optional
 
@@ -38,39 +35,61 @@ class WebhookHandler:
         """
         Verify PayPal Webhook signature.
 
-        PayPal signature verification:
-        1. Concatenate: transmission_id + transmission_time + webhook_id + crc32(body)
-        2. HMAC-SHA256 with the webhook's secret key
-        3. Base64 encode and compare with transmission_sig header
-
-        Note: In production, you need the webhook secret from PayPal.
+        Uses PayPal's official verify-webhook-signature endpoint with the
+        transmission headers, webhook ID and parsed event body.
         Streamlit demo uses demo_mode=True to skip actual verification.
         """
         if self.demo_mode:
             logger.info("Webhook signature verification skipped (demo mode)")
             return True
 
+        if not self.webhook_id:
+            logger.warning("Webhook ID is not configured; verification rejected")
+            return False
+
+        normalized = {str(key).lower().replace("_", "-"): value for key, value in headers.items()}
+        transmission_id = normalized.get("paypal-transmission-id", "")
+        transmission_time = normalized.get("paypal-transmission-time", "")
+        transmission_sig = normalized.get("paypal-transmission-sig", "")
+        cert_url = normalized.get("paypal-cert-url", "")
+        auth_algo = normalized.get("paypal-auth-algo", "")
+        required = (
+            transmission_id,
+            transmission_time,
+            transmission_sig,
+            cert_url,
+            auth_algo,
+        )
+        if not all(required):
+            logger.warning("Missing PayPal webhook verification headers")
+            return False
+
         try:
-            transmission_id = headers.get("Paypal-Transmission-Id", "")
-            transmission_time = headers.get("Paypal-Transmission-Time", "")
-            transmission_sig = headers.get("Paypal-Transmission-Sig", "")
+            from modules.paypal_payment import get_paypal_access_token
 
-            # CRC32 of body
-            crc = hex(zlib.crc32(body.encode('utf-8')) & 0xffffffff)
-
-            # Build signature string
-            sig_string = f"{transmission_id}|{transmission_time}|{self.webhook_id}|{crc}"
-
-            # Note: In production, use the webhook secret from PayPal
-            # secret = os.getenv("PAYPAL_WEBHOOK_SECRET", "")
-            # expected_sig = base64.b64encode(
-            #     hmac.new(secret.encode(), sig_string.encode(), hashlib.sha256).digest()
-            # ).decode()
-
-            # return hmac.compare_digest(expected_sig, transmission_sig)
-            logger.warning("Webhook secret not configured, verification skipped")
-            return True
-
+            access_token = get_paypal_access_token()
+            if not access_token:
+                logger.warning("PayPal access token unavailable; webhook rejected")
+                return False
+            response = requests.post(
+                "https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {access_token}",
+                },
+                json={
+                    "auth_algo": auth_algo,
+                    "cert_url": cert_url,
+                    "transmission_id": transmission_id,
+                    "transmission_sig": transmission_sig,
+                    "transmission_time": transmission_time,
+                    "webhook_id": self.webhook_id,
+                    "webhook_event": json.loads(body),
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            return response.json().get("verification_status") == "SUCCESS"
         except Exception as e:
             logger.error(f"Webhook signature verification failed: {e}")
             return False
