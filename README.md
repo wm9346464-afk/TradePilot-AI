@@ -26,6 +26,20 @@
 
 ---
 
+## TrustLoop Development Preview
+
+The competition build is evolving into **TradePilot TrustLoop**: a governed agentic workflow that reviews evidence-backed contract risk, builds a multi-stage trust ladder, asks for milestone-specific human approval, creates and sends PayPal Sandbox invoices, verifies payment, and issues an auditable Trust Passport.
+
+Run the new Deal Room:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app_trustloop.py
+```
+
+See `docs/TRUSTLOOP_ARCHITECTURE.md`, `docs/SANDBOX_SETUP.md`, `docs/DEMO_SCRIPT.md` and `docs/JUDGE_GUIDE.md`.
+
+---
+
 ## 📢 公开版本说明 / Public Version Notice
 
 本仓库是 TradePilot AI 的**公开演示版本**，用于 PayPal AI Hackathon 2026 参赛提交。
