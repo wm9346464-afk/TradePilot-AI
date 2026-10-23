@@ -1,16 +1,23 @@
 """TrustLoop v0 domain, currency and end-to-end tests."""
 
+import os
 from decimal import Decimal
 
 import pytest
 
+from modules.contract_checker import SAMPLE_CONTRACT
 from modules.trustloop.currency import CurrencyPolicy
 from modules.trustloop.enums import DealState, MilestoneStatus
 from modules.trustloop.gateways.paypal import CreateInvoiceRequest
 from modules.trustloop.gateways.fake_paypal import FakePayPalGateway
 from modules.trustloop.fx import FixtureFxRateProvider, HttpFxRateProvider
 from modules.trustloop.money import money
-from modules.trustloop.service import build_demo_service, demo_deal_input
+from modules.trustloop.policy import PolicyViolation
+from modules.trustloop.service import (
+    build_demo_service,
+    build_runtime_service,
+    demo_deal_input,
+)
 from modules.trustloop.state_machine import DealStateMachine, InvalidStateTransition
 
 
@@ -91,6 +98,39 @@ def test_full_demo_flow_creates_audited_passport():
     assert all(item.status == MilestoneStatus.PAID for item in run.plan.milestones)
     assert service.verify_audit_chain(run.run_id) is True
     assert len(service.get_audit_events(run.run_id)) >= 8
+
+
+def test_runtime_service_reads_milestone_amounts_from_environment(monkeypatch):
+    monkeypatch.setenv("TRUSTLOOP_SAMPLE_AMOUNT", "1")
+    monkeypatch.setenv("TRUSTLOOP_TRIAL_AMOUNT", "2")
+    monkeypatch.setenv("TRUSTLOOP_DEPOSIT_AMOUNT", "3")
+    service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    run = service.propose_plan(
+        run.run_id,
+        invoice_currency="USD",
+        sample_amount=os.getenv("TRUSTLOOP_SAMPLE_AMOUNT", "500"),
+        trial_amount=os.getenv("TRUSTLOOP_TRIAL_AMOUNT", "5000"),
+        deposit_amount=os.getenv("TRUSTLOOP_DEPOSIT_AMOUNT", "10000"),
+    )
+
+    assert run.plan is not None
+    assert [item.amount.amount for item in run.plan.milestones] == [
+        Decimal("1.00"),
+        Decimal("2.00"),
+        Decimal("3.00"),
+    ]
+
+
+def test_runtime_service_enforces_configured_invoice_cap(monkeypatch):
+    monkeypatch.setenv("MAX_INVOICE_AMOUNT_USD", "1.00")
+    service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+
+    with pytest.raises(PolicyViolation, match="max"):
+        service.propose_plan(run.run_id, invoice_currency="USD")
 
 
 class FakeFxResponse:

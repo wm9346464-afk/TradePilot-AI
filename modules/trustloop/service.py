@@ -805,7 +805,13 @@ def build_runtime_service(
     from .policy import PolicyConfig
 
     fx_provider = build_fx_provider()
-    policy = PolicyEngine(PolicyConfig(), fx_provider)
+    max_invoice_amount = Decimal(os.getenv("MAX_INVOICE_AMOUNT_USD", "10000"))
+    if max_invoice_amount <= 0:
+        raise ValueError("MAX_INVOICE_AMOUNT_USD must be greater than zero")
+    policy = PolicyEngine(
+        PolicyConfig(max_invoice_amount_usd=max_invoice_amount),
+        fx_provider,
+    )
     planner = LLMPlanner() if use_llm else RuleBasedPlanner()
     return TrustLoopService(
         contract_gateway=ExistingContractReviewGateway(),

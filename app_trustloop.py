@@ -214,7 +214,13 @@ if run_demo:
         from modules.contract_checker import SAMPLE_CONTRACT
 
         run = service.review_contract(run.run_id, SAMPLE_CONTRACT, use_ai=False)
-        run = service.propose_plan(run.run_id, invoice_currency="USD")
+        run = service.propose_plan(
+            run.run_id,
+            invoice_currency="USD",
+            sample_amount=os.getenv("TRUSTLOOP_SAMPLE_AMOUNT", "500"),
+            trial_amount=os.getenv("TRUSTLOOP_TRIAL_AMOUNT", "5000"),
+            deposit_amount=os.getenv("TRUSTLOOP_DEPOSIT_AMOUNT", "10000"),
+        )
         events = service.get_audit_events(run.run_id)
         st.session_state["trustloop_service"] = service
         st.session_state["trustloop_run"] = run

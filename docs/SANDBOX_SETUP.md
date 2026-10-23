@@ -25,6 +25,18 @@ TRUSTLOOP_USE_LLM=true
 FX_PROVIDER=fixture
 ```
 
+For a fast end-to-end UI payment rehearsal, use three USD 1.00 milestones:
+
+```env
+MAX_INVOICE_AMOUNT_USD=10000
+TRUSTLOOP_SAMPLE_AMOUNT=1
+TRUSTLOOP_TRIAL_AMOUNT=1
+TRUSTLOOP_DEPOSIT_AMOUNT=1
+```
+
+The sample, trial and deposit values are demo configuration, not a credit
+recommendation. Every amount still requires a milestone-specific human approval.
+
 ## Safe smoke test
 
 The default command only checks configuration and OAuth:
