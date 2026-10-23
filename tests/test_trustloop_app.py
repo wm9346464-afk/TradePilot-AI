@@ -30,3 +30,19 @@ def test_trustloop_deal_room_runs_full_demo(monkeypatch):
     assert any("PAID" in item.value for item in at.markdown)
     assert any(metric.label == "Invoice currency" and metric.value == "USD" for metric in at.metric)
 
+
+def test_trustloop_access_password_gate(monkeypatch):
+    monkeypatch.setenv("APP_PASSWORD", "sandbox-demo-pass")
+    monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
+    monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")
+
+    at = AppTest.from_file(str(APP_PATH)).run(timeout=30)
+    assert not at.exception
+    assert not any(item.label == "Review deal & build ladder" for item in at.button)
+
+    password = next(item for item in at.text_input if item.label == "Access password")
+    password.set_value("sandbox-demo-pass").run(timeout=30)
+
+    assert not at.exception
+    assert any(item.label == "Review deal & build ladder" for item in at.button)
+
