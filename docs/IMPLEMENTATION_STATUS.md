@@ -27,7 +27,7 @@ Legend:
 | 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths implemented; bilingual polish, replay UI and hosted testing remain. |
 | 13. Security and privacy | PARTIAL | Secret isolation, human approval, amount limits, prompt constraints, session rate limiting and secret scan implemented; broader security/prompt-injection tests remain TODO. |
 | 14. Session and persistence | TODO | In-memory/session usage only; SessionStore, SQLiteStore and replay bundles not implemented. |
-| 15. Testing | PARTIAL | 43 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
+| 15. Testing | PARTIAL | 47 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 
