@@ -11,6 +11,7 @@ from modules.contract_checker import SAMPLE_CONTRACT
 from .agent.planner import RuleBasedPlanner
 from .agent.llm_planner import LLMPlanner
 from .agent.tools import ToolRegistry, build_default_tool_registry
+from .agent.negotiation import NegotiationResult, negotiate
 from .audit import AuditEvent, AuditLog
 from .currency import CurrencyPolicy
 from .enums import DealState, MilestoneStatus, RunMode
@@ -61,6 +62,7 @@ class TrustLoopService:
         self.tool_registry = tool_registry or build_default_tool_registry()
         self._runs: dict[str, DealRun] = {}
         self._audits: dict[str, AuditLog] = {}
+        self._negotiations: dict[str, NegotiationResult] = {}
 
     def start_case(self, deal_input: DealInput) -> DealRun:
         deal = DealCase(
@@ -632,6 +634,42 @@ class TrustLoopService:
         if run_id not in self._audits:
             raise KeyError(f"Unknown run_id: {run_id}")
         return list(self._audits[run_id].events)
+
+    def simulate_negotiation(
+        self,
+        run_id: str,
+        *,
+        max_turns: int = 5,
+        buyer_max_initial_payment: str | int | None = None,
+    ) -> NegotiationResult:
+        run = self.get_run(run_id)
+        result = negotiate(
+            run,
+            max_turns=max_turns,
+            buyer_max_initial_payment=buyer_max_initial_payment,
+        )
+        self._negotiations[run_id] = result
+        self._audit(
+            run_id,
+            "NEGOTIATION_COMPLETED",
+            "AGENT",
+            "BuyerAgent/SellerAgent",
+            {
+                "agreed": result.agreed,
+                "summary": result.summary,
+                "turns": len(result.turns),
+                "final_initial_payment": (
+                    result.final_initial_payment.model_dump(mode="json")
+                    if result.final_initial_payment
+                    else None
+                ),
+                "final_credit_days": result.final_credit_days,
+            },
+        )
+        return result
+
+    def get_negotiation(self, run_id: str) -> NegotiationResult | None:
+        return self._negotiations.get(run_id)
 
     def verify_audit_chain(self, run_id: str) -> bool:
         return self._audits[run_id].verify_chain()

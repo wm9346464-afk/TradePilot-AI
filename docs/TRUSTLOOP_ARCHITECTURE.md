@@ -58,6 +58,7 @@ Implemented:
 - Deterministic planner and structured LLM planner with fallback.
 - Live DeepSeek structured AgentProposal verified with the full three-stage FakePayPal workflow.
 - Ordered agent-requested invoice tools are executed through a deterministic tool executor.
+- Bounded buyer/seller agents negotiate within hard payment and credit constraints.
 - Three-stage Trust Ladder with explicit human approvals.
 - Audit hash chain and Trust Passport.
 - Trust Passport integrity verification and portable replay bundles.

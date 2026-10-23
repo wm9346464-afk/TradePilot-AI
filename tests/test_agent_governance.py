@@ -9,6 +9,7 @@ from modules.trustloop.agent.tools import (
 from modules.trustloop.models import ToolRequest
 from modules.trustloop.service import build_demo_service, demo_deal_input
 from modules.trustloop.agent.planner import RuleBasedPlanner
+from modules.trustloop.agent.negotiation import negotiate
 from modules.trustloop.agent.executor import AgentToolExecutionError, AgentToolExecutor
 from modules.trustloop.enums import DealState
 from modules.trustloop.agent.planner import RuleBasedPlanner
@@ -124,4 +125,57 @@ def test_service_enforces_required_tools_when_planner_omits_them():
         "send_invoice",
     ]
     assert any("enforced" in warning for warning in run.agent_proposal.warnings)
+
+
+def test_buyer_seller_negotiation_reaches_milestone_agreement():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+
+    result = negotiate(run)
+
+    assert result.agreed is True
+    assert result.final_initial_payment is not None
+    assert result.final_credit_days == 0
+    assert len(result.turns) >= 3
+    assert result.turns[-1].accepted is True
+
+
+def test_buyer_seller_negotiation_rejects_no_overlap():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+
+    result = negotiate(run, buyer_max_initial_payment=100)
+
+    assert result.agreed is False
+    assert result.final_initial_payment is None
+    assert "No agreement" in result.summary
+
+
+def test_service_audits_negotiation_result():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+
+    result = service.simulate_negotiation(run.run_id)
+
+    assert result.agreed is True
+    assert service.get_negotiation(run.run_id) == result
+    assert any(
+        event.event_type == "NEGOTIATION_COMPLETED"
+        for event in service.get_audit_events(run.run_id)
+    )
 

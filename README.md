@@ -48,6 +48,7 @@ The system combines:
 
 - **Agent reasoning:** a structured AgentProposal selects a risk-aware payment path.
 - **Restricted tool use:** the agent may request only registered tools.
+- **Buyer/seller negotiation:** bounded agents negotiate inside hard payment and credit constraints.
 - **Human-in-the-loop control:** every financial milestone needs a human approval bound to an exact amount and currency.
 - **PayPal execution:** invoices are created, sent, and queried through the PayPal REST API.
 - **Verified progression:** no optimistic UI states; only `PAID` unlocks the next stage.
@@ -241,7 +242,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 52 automated tests passing;
+- 55 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;

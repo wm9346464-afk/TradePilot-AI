@@ -53,6 +53,7 @@ if "trustloop_rate_limiter" not in st.session_state:
         "llm": InMemoryRateLimiter(max_calls=10, window_seconds=3600),
         "financial": InMemoryRateLimiter(max_calls=12, window_seconds=3600),
         "status": InMemoryRateLimiter(max_calls=60, window_seconds=3600),
+        "negotiation": InMemoryRateLimiter(max_calls=20, window_seconds=3600),
     }
 rate_limiter = st.session_state["trustloop_rate_limiter"]
 
@@ -60,7 +61,7 @@ with st.sidebar:
     st.markdown("### Demo controls")
     st.caption("Safe demo controls; no real money is used.")
     if st.button("Reset current demo", use_container_width=True):
-        for key in ("trustloop_service", "trustloop_run", "trustloop_events"):
+        for key in ("trustloop_service", "trustloop_run", "trustloop_events", "trustloop_negotiation"):
             st.session_state.pop(key, None)
         st.rerun()
     uploaded_bundle = st.file_uploader(
@@ -217,6 +218,7 @@ if run_demo:
         st.session_state["trustloop_service"] = service
         st.session_state["trustloop_run"] = run
         st.session_state["trustloop_events"] = events
+        st.session_state.pop("trustloop_negotiation", None)
 
 run = st.session_state.get("trustloop_run")
 events = st.session_state.get("trustloop_events", [])
@@ -434,6 +436,25 @@ with center:
             st.warning(warning)
         with st.expander("View structured AgentProposal JSON"):
             st.json(run.agent_proposal.model_dump(mode="json"))
+    if service and run.plan:
+        if st.button("Simulate Buyer / Seller negotiation", use_container_width=True):
+            try:
+                rate_limiter["negotiation"].check("simulate_negotiation")
+                st.session_state["trustloop_negotiation"] = service.simulate_negotiation(run.run_id)
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+                st.rerun()
+            except RateLimitExceeded as exc:
+                st.error(str(exc))
+        negotiation = st.session_state.get("trustloop_negotiation")
+        if negotiation:
+            st.markdown(f"**Negotiation result:** {negotiation.summary}")
+            with st.expander("Buyer / Seller negotiation turns", expanded=True):
+                for turn in negotiation.turns:
+                    st.markdown(
+                        f"**Turn {turn.turn} · {turn.actor}**"
+                        + (" · ACCEPTED" if turn.accepted else "")
+                    )
+                    st.caption(turn.message)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="tp-card"><h3>Trust Ladder</h3>', unsafe_allow_html=True)

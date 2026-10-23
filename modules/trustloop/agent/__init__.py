@@ -3,6 +3,7 @@
 from .planner import AgentPlanner, RuleBasedPlanner
 from .llm_planner import LLMPlanner
 from .executor import AgentToolExecutionError, AgentToolExecutor
+from .negotiation import NegotiationResult, negotiate
 from .tools import ToolRegistry, ToolRequestDenied, build_default_tool_registry
 
 __all__ = [
@@ -11,6 +12,8 @@ __all__ = [
     "LLMPlanner",
     "AgentToolExecutionError",
     "AgentToolExecutor",
+    "NegotiationResult",
+    "negotiate",
     "ToolRegistry",
     "ToolRequestDenied",
     "build_default_tool_registry",
