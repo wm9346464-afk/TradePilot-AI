@@ -241,7 +241,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 51 automated tests passing;
+- 52 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
@@ -267,7 +267,7 @@ tests/                         Unit, integration and AppTest coverage
 ## Current limitations
 
 - The public demo is not yet deployed to a permanent hosted URL.
-- PayPal MCP adapter is not yet implemented; REST is the stable path.
+- PayPal MCP adapter is implemented behind an injectable client; REST remains the stable verified path.
 - Buyer/seller agent negotiation is a planned enhancement.
 - Persistent event storage and replay across process restarts are planned.
 - Webhook verification logic uses PayPal's official verification API; a production HTTP webhook endpoint is not deployed.

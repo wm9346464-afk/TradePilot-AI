@@ -53,6 +53,7 @@ Implemented:
 - PayPal REST adapter with mocked tests.
 - Live PayPal Sandbox invoice creation, sending, buyer payment and PAID status verification.
 - PayPal official Webhook verification API integration.
+- Optional PayPal MCP adapter behind an injectable tool-client interface.
 - Structured AgentProposal and restricted tool registry.
 - Deterministic planner and structured LLM planner with fallback.
 - Live DeepSeek structured AgentProposal verified with the full three-stage FakePayPal workflow.

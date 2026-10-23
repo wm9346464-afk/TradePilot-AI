@@ -19,7 +19,7 @@ Legend:
 | 4. State machine and audit | PARTIAL | Deterministic transitions, idempotency and hash chain implemented; process-restart recovery and replay storage remain TODO. |
 | 5. Multi-currency | PARTIAL | Money, CNY restrictions, zero-decimal currencies, fixture/live FX and tests implemented; full currency-selection UI remains TODO. |
 | 6. Contract review | PARTIAL | Rule and AI review, evidence validation and fallback implemented; deeper multi-currency contract parsing remains TODO. |
-| 7. PayPal gateway | PARTIAL | Fake and REST gateways implemented; live Sandbox create/send/pay/PAID verified; official Webhook verification API implemented. MCP and deployed webhook endpoint remain TODO. |
+| 7. PayPal gateway | PARTIAL | Fake and REST gateways implemented; live Sandbox create/send/pay/PAID verified; official Webhook verification API and injectable MCP adapter implemented. Deployed webhook endpoint and live MCP verification remain TODO. |
 | 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy, fallback and ordered create/send tool execution implemented; broader generic tool-selection loop remains PARTIAL. |
 | 9. Buyer/seller negotiation | TODO | Not implemented. |
 | 10. Trust Ladder | PARTIAL | Three-stage ladder, per-stage approval and unlock implemented; more risk-driven amount policy remains TODO. |
@@ -27,7 +27,7 @@ Legend:
 | 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths implemented; bilingual polish, replay UI and hosted testing remain. |
 | 13. Security and privacy | PARTIAL | Secret isolation, human approval, amount limits, prompt constraints, session rate limiting and secret scan implemented; broader security/prompt-injection tests remain TODO. |
 | 14. Session and persistence | PARTIAL | Run bundle export/restore, tamper validation and completed-run replay UI implemented; SessionStore, SQLiteStore and live resumable sessions remain TODO. |
-| 15. Testing | PARTIAL | 51 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
+| 15. Testing | PARTIAL | 52 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 
