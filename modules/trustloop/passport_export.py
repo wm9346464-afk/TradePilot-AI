@@ -34,6 +34,13 @@ def render_passport_html(passport: TrustPassport) -> str:
         f"<td>{html.escape(item.approved_at.isoformat())}</td></tr>"
         for item in passport.approvals
     )
+    agent_rows = "".join(
+        f"<tr><td>{html.escape(item.action_type)}</td>"
+        f"<td>{html.escape(item.actor)}</td>"
+        f"<td>{html.escape(item.summary)}</td>"
+        f"<td>{html.escape(', '.join(item.tool_names) or 'None')}</td></tr>"
+        for item in passport.agent_actions
+    ) or "<tr><td colspan='4'>No agent action evidence recorded.</td></tr>"
     fx_rows = "".join(
         f"<tr><td>{html.escape(item.base_currency)}/{html.escape(item.quote_currency)}</td>"
         f"<td>{html.escape(str(item.rate))}</td>"
@@ -64,6 +71,7 @@ th{{background:#f0f6ff}} .meta{{background:#f7f9fa;padding:16px;border-radius:12
 <h2>Trust Ladder</h2><table><tr><th>#</th><th>Milestone</th><th>Amount</th><th>Status</th></tr>{milestone_rows}</table>
 <h2>Payments</h2><table><tr><th>Invoice</th><th>Amount</th><th>Status</th><th>Transaction</th></tr>{settlement_rows}</table>
 <h2>Human approvals</h2><table><tr><th>Milestone</th><th>Amount</th><th>Approved by</th><th>Time</th></tr>{approval_rows}</table>
+<h2>Agent decision evidence</h2><table><tr><th>Action</th><th>Actor</th><th>Summary</th><th>Requested tools</th></tr>{agent_rows}</table>
 <h2>FX snapshots</h2><table><tr><th>Pair</th><th>Rate</th><th>Source</th><th>Mode</th></tr>{fx_rows}</table>
 <h2>Audit head</h2><p class="hash">{html.escape(passport.audit_head_hash)}</p>
 <footer>This document is an audit artifact. It is not a legal opinion, credit rating or payment guarantee.</footer>

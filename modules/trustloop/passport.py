@@ -26,6 +26,7 @@ def verify_passport(
         "head_hash_matches": False,
         "has_paid_settlement": False,
         "approvals_present": bool(passport.approvals),
+        "agent_actions_present": bool(passport.agent_actions),
         "amounts_positive": all(item.amount.amount > 0 for item in passport.settlements),
     }
     try:

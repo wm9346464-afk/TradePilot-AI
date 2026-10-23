@@ -18,6 +18,7 @@ from .enums import DealState, MilestoneStatus, RunMode
 from .fx import build_fx_provider
 from .models import (
     ActionPlan,
+    AgentActionRecord,
     ApprovalRecord,
     BuyerProfile,
     DealCase,
@@ -566,6 +567,32 @@ class TrustLoopService:
             if run.plan.settlement_plan.fx_snapshot
             else []
         )
+        agent_actions: list[AgentActionRecord] = []
+        if run.agent_proposal:
+            proposal = run.agent_proposal
+            agent_actions.append(
+                AgentActionRecord(
+                    action_type="PLAN_PROPOSAL",
+                    actor=proposal.planner_type,
+                    summary=f"{proposal.decision}: {proposal.rationale}",
+                    tool_names=[item.tool_name for item in proposal.requested_tools],
+                    evidence_refs=proposal.evidence_refs,
+                    warnings=proposal.warnings,
+                    confidence=proposal.confidence,
+                )
+            )
+        negotiation = self.get_negotiation(run_id)
+        if negotiation:
+            agent_actions.append(
+                AgentActionRecord(
+                    action_type="NEGOTIATION",
+                    actor="BUYER_AGENT/SELLER_AGENT",
+                    summary=negotiation.summary,
+                    tool_names=[],
+                    evidence_refs=[],
+                    warnings=[],
+                )
+            )
         passport = TrustPassport(
             run_id=run.run_id,
             deal_id=run.deal.deal_id,
@@ -576,6 +603,7 @@ class TrustLoopService:
             ladder=run.plan.milestones,
             settlements=settlements,
             approvals=run.approvals,
+            agent_actions=agent_actions,
             fx_snapshots=fx_snapshots,
             audit_head_hash=self._audits[run_id].head_hash,
             mode=run.deal.mode,

@@ -208,6 +208,17 @@ class ApprovalRecord(StrictModel):
     expires_at: datetime | None = None
 
 
+class AgentActionRecord(StrictModel):
+    action_type: Literal["PLAN_PROPOSAL", "NEGOTIATION"]
+    actor: str
+    summary: str
+    tool_names: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    confidence: Decimal | None = Field(default=None, ge=0, le=1)
+    recorded_at: datetime = Field(default_factory=utc_now)
+
+
 class PaymentResult(StrictModel):
     success: bool
     backend: Literal["REST", "MCP", "FAKE"] = "FAKE"
@@ -238,7 +249,7 @@ class SettlementRecord(StrictModel):
 
 class TrustPassport(StrictModel):
     passport_id: str = Field(default_factory=lambda: f"TP-{uuid4().hex[:12].upper()}")
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     run_id: str
     deal_id: str
     buyer_id: str
@@ -248,6 +259,7 @@ class TrustPassport(StrictModel):
     ladder: list[TrustMilestone]
     settlements: list[SettlementRecord]
     approvals: list[ApprovalRecord]
+    agent_actions: list[AgentActionRecord] = Field(default_factory=list)
     fx_snapshots: list[FxSnapshot] = Field(default_factory=list)
     audit_head_hash: str
     issued_at: datetime = Field(default_factory=utc_now)
