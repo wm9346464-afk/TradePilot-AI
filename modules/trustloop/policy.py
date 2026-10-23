@@ -24,6 +24,7 @@ class PolicyViolation(ValueError):
 
 class PolicyConfig(BaseModel):
     max_invoice_amount_usd: Decimal = Decimal("10000")
+    max_milestones: int = Field(default=5, ge=1, le=20)
     allowed_currencies: list[str] = Field(
         default_factory=lambda: ["USD", "EUR", "GBP", "JPY", "CNY"]
     )
@@ -56,6 +57,11 @@ class PolicyEngine:
             )
 
     def validate_plan(self, plan: ActionPlan) -> None:
+        if len(plan.milestones) > self.config.max_milestones:
+            raise PolicyViolation(
+                f"Plan has {len(plan.milestones)} milestones; maximum is "
+                f"{self.config.max_milestones}"
+            )
         sequences = [item.sequence for item in plan.milestones]
         if sequences != list(range(1, len(plan.milestones) + 1)):
             raise PolicyViolation("Milestone sequence must be contiguous and start at 1")
@@ -65,6 +71,11 @@ class PolicyEngine:
     def validate_agent_proposal(self, proposal: AgentProposal) -> None:
         if not proposal.recommended_ladder:
             raise PolicyViolation("Agent proposal must include at least one milestone")
+        if len(proposal.recommended_ladder) > self.config.max_milestones:
+            raise PolicyViolation(
+                f"Agent proposed {len(proposal.recommended_ladder)} milestones; "
+                f"maximum is {self.config.max_milestones}"
+            )
         if any(
             request.tool_name in {"create_invoice", "send_invoice"}
             for request in proposal.requested_tools

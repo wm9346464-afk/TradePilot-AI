@@ -178,6 +178,14 @@ class TrustLoopService:
             deposit_amount=deposit_amount,
         )
         proposal = self._ensure_required_stage_tools(proposal)
+        proposed_currencies = {
+            item.invoice_currency for item in proposal.recommended_ladder
+        }
+        if proposed_currencies != {selected_currency}:
+            raise PolicyViolation(
+                "Agent milestones must use the validated invoice currency "
+                f"{selected_currency}; received {sorted(proposed_currencies)}"
+            )
         self.policy_engine.validate_agent_proposal(proposal)
         self.tool_registry.validate_proposal(
             proposal.requested_tools,
