@@ -131,3 +131,28 @@ def test_http_fx_provider_falls_back_on_failure():
     assert snapshot.mode == "DEMO_FIXTURE"
     assert "fallback" in snapshot.source.lower()
 
+
+def test_refresh_payment_advances_only_when_paypal_reports_paid():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+    run = service.approve_plan(run.run_id)
+    run = service.create_invoice(run.run_id)
+    run = service.send_invoice(run.run_id)
+    milestone = service._find_milestone(run, None)
+
+    pending = service.refresh_payment(run.run_id)
+    assert pending.state == DealState.AWAITING_PAYMENT
+    assert milestone.status == MilestoneStatus.AWAITING_PAYMENT
+
+    service.paypal_gateway.simulate_payment(milestone.invoice_id)
+    paid = service.refresh_payment(run.run_id)
+
+    assert paid.state == DealState.PAYMENT_CONFIRMED
+    assert milestone.status == MilestoneStatus.PAID
+    assert milestone.payment_id is not None
+

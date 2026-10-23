@@ -12,6 +12,18 @@ from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
 
 
+def _complete_after_payment(service, run):
+    run = service.complete_milestone(run.run_id)
+    if run.plan and any(
+        item.status.value != "PAID" for item in run.plan.milestones
+    ):
+        run = service.request_next_milestone(run.run_id)
+    else:
+        service.issue_passport(run.run_id)
+        run = service.get_run(run.run_id)
+    return run
+
+
 st.set_page_config(
     page_title="TradePilot TrustLoop",
     page_icon="TP",
@@ -86,16 +98,28 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+configured_backend = os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake").strip().upper()
+backend_badge = (
+    '<span class="tp-badge tp-live">PAYPAL SANDBOX / REST</span>'
+    if configured_backend == "REST"
+    else '<span class="tp-badge tp-demo">DEMO / FAKE PAYPAL</span>'
+)
 st.markdown(
-    '<span class="tp-badge tp-demo">DEMO / FAKE PAYPAL</span>'
-    '<span class="tp-badge tp-demo">CNY contract → USD invoice</span>'
-    '<span class="tp-badge tp-demo">HUMAN APPROVAL REQUIRED</span>',
+    backend_badge
+    + '<span class="tp-badge tp-demo">CNY contract → USD invoice</span>'
+    + '<span class="tp-badge tp-demo">HUMAN APPROVAL REQUIRED</span>',
     unsafe_allow_html=True,
 )
-st.warning(
-    "This v0 runs entirely with deterministic Demo data and a fake PayPal gateway. "
-    "No real payment, no real customer data, and no production claim."
-)
+if configured_backend == "REST":
+    st.info(
+        "PayPal REST Sandbox mode: invoices are created and sent through PayPal. "
+        "The workflow advances only after PayPal reports PAID."
+    )
+else:
+    st.warning(
+        "This mode uses deterministic Demo data and a fake PayPal gateway. "
+        "No real payment, no real customer data, and no production claim."
+    )
 
 left, right = st.columns([4, 1])
 with left:
@@ -143,6 +167,7 @@ if not run:
     st.stop()
 
 service = st.session_state.get("trustloop_service")
+backend_name = service.paypal_gateway.backend_name if service else "FAKE"
 if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
     active = next(
         (
@@ -163,23 +188,92 @@ if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
             unsafe_allow_html=True,
         )
         if st.button(
-            f"Approve stage {active.sequence} & simulate PayPal",
+            (
+                f"Approve stage {active.sequence} & simulate PayPal"
+                if backend_name == "FAKE"
+                else f"Approve stage {active.sequence} & create PayPal invoice"
+            ),
             type="primary",
             use_container_width=True,
         ):
-            with st.spinner("Creating invoice, simulating payment, and unlocking the next stage..."):
-                run = service.approve_plan(run.run_id)
-                run = service.create_invoice(run.run_id)
-                run = service.send_invoice(run.run_id)
-                run = service.simulate_payment(run.run_id)
-                run = service.complete_milestone(run.run_id)
-                if run.plan and any(
-                    item.status.value != "PAID" for item in run.plan.milestones
-                ):
-                    run = service.request_next_milestone(run.run_id)
-                else:
-                    service.issue_passport(run.run_id)
-                    run = service.get_run(run.run_id)
+            try:
+                with st.spinner("Applying approval and creating the PayPal invoice..."):
+                    run = service.approve_plan(run.run_id)
+                    run = service.create_invoice(run.run_id)
+                    run = service.send_invoice(run.run_id)
+                    if backend_name == "FAKE":
+                        run = service.simulate_payment(run.run_id)
+                        run = _complete_after_payment(service, run)
+            except Exception as exc:
+                st.error(f"PayPal stage action failed: {type(exc).__name__}: {exc}")
+                st.session_state["trustloop_run"] = service.get_run(run.run_id)
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+            else:
+                st.session_state["trustloop_run"] = run
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+                st.rerun()
+
+if run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED} and service:
+    st.warning("The approved stage is incomplete. You can safely resume it without re-approving.")
+    if st.button("Resume approved stage", type="primary", use_container_width=True):
+        try:
+            with st.spinner("Resuming the approved PayPal stage..."):
+                if run.state == DealState.INVOICE_CREATING:
+                    run = service.create_invoice(run.run_id)
+                if run.state == DealState.INVOICE_CREATED:
+                    run = service.send_invoice(run.run_id)
+                if backend_name == "FAKE":
+                    run = service.simulate_payment(run.run_id)
+                    run = _complete_after_payment(service, run)
+        except Exception as exc:
+            st.error(f"Resume failed: {type(exc).__name__}: {exc}")
+            st.session_state["trustloop_run"] = service.get_run(run.run_id)
+            st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+        else:
+            st.session_state["trustloop_run"] = run
+            st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+            st.rerun()
+
+if run.state == DealState.AWAITING_PAYMENT and run.plan and service:
+    active = next(
+        (
+            item
+            for item in run.plan.milestones
+            if item.milestone_id == run.active_milestone_id
+        ),
+        None,
+    )
+    current_invoice = next(
+        (
+            item
+            for item in reversed(run.invoices)
+            if active and item.invoice_id == active.invoice_id
+        ),
+        None,
+    )
+    if active:
+        st.markdown(
+            f"""<div class="tp-card">
+            <h3>PayPal invoice sent</h3>
+            <p><strong>Stage {active.sequence}: {html.escape(active.name)}</strong></p>
+            <p>Amount: <strong>{active.amount.format()}</strong></p>
+            <p class="tp-muted">Waiting for the buyer to approve payment in PayPal. The workflow will advance only after PayPal reports PAID.</p>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if current_invoice and current_invoice.payment_url:
+            st.markdown(f"[Open PayPal payment page]({current_invoice.payment_url})")
+        if st.button("Refresh PayPal payment status", type="primary", use_container_width=True):
+            try:
+                with st.spinner("Checking PayPal invoice status..."):
+                    run = service.refresh_payment(run.run_id)
+                    if run.state == DealState.PAYMENT_CONFIRMED:
+                        run = _complete_after_payment(service, run)
+            except Exception as exc:
+                st.error(f"Payment status check failed: {type(exc).__name__}: {exc}")
+                st.session_state["trustloop_run"] = service.get_run(run.run_id)
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+            else:
                 st.session_state["trustloop_run"] = run
                 st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
                 st.rerun()
@@ -277,15 +371,40 @@ with right:
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="tp-card"><h3>Payment evidence</h3>', unsafe_allow_html=True)
+    payment_rows = []
     if passport and passport.settlements:
-        for settlement in passport.settlements:
+        payment_rows = [
+            (item.invoice_number, item.amount, "PAID", item.transaction_id)
+            for item in passport.settlements
+        ]
+    elif run.plan:
+        for milestone in run.plan.milestones:
+            invoice = next(
+                (
+                    item
+                    for item in reversed(run.invoices)
+                    if item.invoice_id == milestone.invoice_id
+                ),
+                None,
+            )
+            if invoice:
+                payment_rows.append(
+                    (
+                        invoice.invoice_number or "Pending",
+                        invoice.amount or milestone.amount,
+                        invoice.status or milestone.status.value,
+                        invoice.transaction_id,
+                    )
+                )
+    if payment_rows:
+        for invoice_number, amount, status, transaction_id in payment_rows:
+            status_class = "tp-paid" if status == "PAID" else "tp-ready"
             st.markdown(
-                f"**{html.escape(settlement.invoice_number)}** · "
-                f"{settlement.amount.format()} · "
-                "<span class='tp-status tp-paid'>PAID</span>",
+                f"**{html.escape(invoice_number)}** · {amount.format()} · "
+                f"<span class='tp-status {status_class}'>{html.escape(status)}</span>",
                 unsafe_allow_html=True,
             )
-            st.caption(f"Transaction: {settlement.transaction_id or 'N/A'}")
+            st.caption(f"Transaction: {transaction_id or 'N/A'}")
     else:
         st.info("No payment evidence yet.")
     st.markdown("</div>", unsafe_allow_html=True)

@@ -397,6 +397,68 @@ class TrustLoopService:
         self._save(run)
         return run
 
+    def refresh_payment(
+        self,
+        run_id: str,
+        *,
+        milestone_id: str | None = None,
+    ) -> DealRun:
+        """Refresh the active invoice and advance only on a verified PAID status."""
+        run = self._require_run(run_id, DealState.AWAITING_PAYMENT)
+        milestone = self._find_milestone(run, milestone_id)
+        if not milestone.invoice_id:
+            raise PolicyViolation("Milestone has no invoice_id")
+
+        invoice = self.paypal_gateway.get_invoice(milestone.invoice_id)
+        if not invoice.success:
+            raise PolicyViolation(
+                invoice.error_message or "PayPal payment status lookup failed"
+            )
+
+        updated_invoices = list(run.invoices)
+        for index, item in enumerate(updated_invoices):
+            if item.invoice_id == milestone.invoice_id:
+                updated_invoices[index] = invoice
+                break
+        else:
+            updated_invoices.append(invoice)
+        run = run.model_copy(update={"invoices": updated_invoices})
+
+        if invoice.status == "PAID":
+            milestone.status = MilestoneStatus.PAID
+            milestone.payment_id = invoice.transaction_id
+            milestone.history.append(
+                StatusEvent(label="PAID", detail=invoice.transaction_id or "")
+            )
+            run = self.state_machine.transition(run, "PAYMENT_CONFIRMED")
+            self._audit(
+                run_id,
+                "PAYMENT_CONFIRMED",
+                "PAYPAL",
+                self.paypal_gateway.backend_name,
+                {
+                    "invoice_id": milestone.invoice_id,
+                    "transaction_id": invoice.transaction_id,
+                    "amount": milestone.amount.model_dump(mode="json"),
+                    "raw_status": invoice.raw_status,
+                },
+            )
+        else:
+            self._audit(
+                run_id,
+                "PAYMENT_STATUS_CHECKED",
+                "PAYPAL",
+                self.paypal_gateway.backend_name,
+                {
+                    "invoice_id": milestone.invoice_id,
+                    "status": invoice.status,
+                    "raw_status": invoice.raw_status,
+                },
+            )
+
+        self._save(run)
+        return run
+
     def complete_milestone(
         self,
         run_id: str,
