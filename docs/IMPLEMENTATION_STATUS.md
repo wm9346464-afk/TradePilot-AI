@@ -25,7 +25,7 @@ Legend:
 | 10. Trust Ladder | PARTIAL | Three-stage ladder, per-stage approval and unlock implemented; more risk-driven amount policy remains TODO. |
 | 11. Trust Passport | PARTIAL | JSON, risk, FX, approvals, settlements and audit hash implemented; PDF, public verification and agent-action detail remain TODO. |
 | 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths implemented; bilingual polish, replay UI and hosted testing remain. |
-| 13. Security and privacy | PARTIAL | Secret isolation, human approval, amount limits and prompt constraints implemented; rate limiting and broader security tests remain TODO. |
+| 13. Security and privacy | PARTIAL | Secret isolation, human approval, amount limits, prompt constraints, session rate limiting and secret scan implemented; broader security/prompt-injection tests remain TODO. |
 | 14. Session and persistence | TODO | In-memory/session usage only; SessionStore, SQLiteStore and replay bundles not implemented. |
 | 15. Testing | PARTIAL | 42 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
@@ -46,5 +46,5 @@ Legend:
 - PayPal MCP adapter.
 - Persistent event store and replay.
 - Trust Passport PDF and public verification.
-- Rate limiting and prompt-injection test suite.
+- Broader prompt-injection and security test suite.
 

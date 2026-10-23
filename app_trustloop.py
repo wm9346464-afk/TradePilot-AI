@@ -5,11 +5,13 @@ from __future__ import annotations
 import html
 import json
 import os
+from uuid import uuid4
 
 import streamlit as st
 
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
+from modules.trustloop.security import InMemoryRateLimiter, RateLimitExceeded
 
 
 def _complete_after_payment(service, run):
@@ -30,6 +32,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
+if "trustloop_session_key" not in st.session_state:
+    st.session_state["trustloop_session_key"] = uuid4().hex
+if "trustloop_rate_limiter" not in st.session_state:
+    st.session_state["trustloop_rate_limiter"] = {
+        "llm": InMemoryRateLimiter(max_calls=10, window_seconds=3600),
+        "financial": InMemoryRateLimiter(max_calls=12, window_seconds=3600),
+        "status": InMemoryRateLimiter(max_calls=60, window_seconds=3600),
+    }
+rate_limiter = st.session_state["trustloop_rate_limiter"]
 
 st.markdown(
     """
@@ -132,6 +144,11 @@ with right:
     run_demo = st.button("Review deal & build ladder", type="primary", use_container_width=True)
 
 if run_demo:
+    try:
+        rate_limiter["llm"].check("review_and_plan")
+    except RateLimitExceeded as exc:
+        st.error(str(exc))
+        st.stop()
     with st.spinner("Reviewing contract and building the trust ladder..."):
         service = build_runtime_service(
             paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
@@ -197,6 +214,7 @@ if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
             use_container_width=True,
         ):
             try:
+                rate_limiter["financial"].check("approve_stage")
                 with st.spinner("Applying approval and creating the PayPal invoice..."):
                     run = service.approve_plan(run.run_id)
                     run = service.create_invoice(run.run_id)
@@ -217,6 +235,7 @@ if run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED} and serv
     st.warning("The approved stage is incomplete. You can safely resume it without re-approving.")
     if st.button("Resume approved stage", type="primary", use_container_width=True):
         try:
+            rate_limiter["financial"].check("resume_stage")
             with st.spinner("Resuming the approved PayPal stage..."):
                 if run.state == DealState.INVOICE_CREATING:
                     run = service.create_invoice(run.run_id)
@@ -265,6 +284,7 @@ if run.state == DealState.AWAITING_PAYMENT and run.plan and service:
             st.markdown(f"[Open PayPal payment page]({current_invoice.payment_url})")
         if st.button("Refresh PayPal payment status", type="primary", use_container_width=True):
             try:
+                rate_limiter["status"].check("refresh_status")
                 with st.spinner("Checking PayPal invoice status..."):
                     run = service.refresh_payment(run.run_id)
                     if run.state == DealState.PAYMENT_CONFIRMED:
