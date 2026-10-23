@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import streamlit as st
 
+from modules.config import load_config
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
 from modules.trustloop.security import InMemoryRateLimiter, RateLimitExceeded
@@ -33,6 +34,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+load_config()
+app_password = os.getenv("APP_PASSWORD", "")
+if app_password and not st.session_state.get("trustloop_authenticated", False):
+    st.markdown("### TradePilot TrustLoop")
+    st.caption("This demo is protected by an access password.")
+    entered_password = st.text_input("Access password", type="password")
+    if entered_password != app_password:
+        st.info("Enter the demo access password to continue.")
+        st.stop()
+    st.session_state["trustloop_authenticated"] = True
+
 if "trustloop_session_key" not in st.session_state:
     st.session_state["trustloop_session_key"] = uuid4().hex
 if "trustloop_rate_limiter" not in st.session_state:
@@ -42,6 +54,28 @@ if "trustloop_rate_limiter" not in st.session_state:
         "status": InMemoryRateLimiter(max_calls=60, window_seconds=3600),
     }
 rate_limiter = st.session_state["trustloop_rate_limiter"]
+
+with st.sidebar:
+    st.markdown("### Demo controls")
+    st.caption("Safe demo controls; no real money is used.")
+    if st.button("Reset current demo", use_container_width=True):
+        for key in ("trustloop_service", "trustloop_run", "trustloop_events"):
+            st.session_state.pop(key, None)
+        st.rerun()
+    st.markdown("### Judge quick start")
+    st.markdown(
+        "1. Review the deal\n"
+        "2. Inspect risk evidence\n"
+        "3. Approve one exact stage\n"
+        "4. Verify PayPal payment\n"
+        "5. Inspect the Trust Passport"
+    )
+    st.markdown("### Active mode")
+    st.caption(
+        f"PayPal: {os.getenv('TRUSTLOOP_PAYPAL_BACKEND', 'fake')}\n"
+        f"LLM: {'on' if os.getenv('TRUSTLOOP_USE_LLM', 'true').lower() != 'false' else 'off'}\n"
+        f"FX: {os.getenv('FX_PROVIDER', 'fixture')}"
+    )
 
 st.markdown(
     """
@@ -185,6 +219,34 @@ if not run:
 
 service = st.session_state.get("trustloop_service")
 backend_name = service.paypal_gateway.backend_name if service else "FAKE"
+
+milestones = run.plan.milestones if run.plan else []
+paid_count = sum(item.status.value == "PAID" for item in milestones)
+progress_value = 1.0 if run.passport else (paid_count / len(milestones) if milestones else 0.0)
+st.markdown("### Deal progress")
+st.progress(
+    progress_value,
+    text=f"{paid_count}/{len(milestones)} milestones paid"
+    + (" · Trust Passport issued" if run.passport else ""),
+)
+if run.state == DealState.AWAITING_APPROVAL and run.active_milestone_id:
+    next_action = (
+        "Next: review the exact milestone amount, then record human approval."
+    )
+elif run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED}:
+    next_action = "Next: resume the approved PayPal stage."
+elif run.state == DealState.AWAITING_PAYMENT:
+    next_action = (
+        "Next: complete the Sandbox payment, then refresh PayPal status."
+        if backend_name != "FAKE"
+        else "Next: simulate the demo payment."
+    )
+elif run.state == DealState.PASSPORT_ISSUED:
+    next_action = "Demo complete: inspect or download the Trust Passport."
+else:
+    next_action = "Next: continue the current verified workflow step."
+st.info(next_action)
+
 if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
     active = next(
         (
@@ -354,6 +416,8 @@ with center:
         st.markdown(f"**Requested tools:** {html.escape(requested_tools)}")
         for warning in run.agent_proposal.warnings:
             st.warning(warning)
+        with st.expander("View structured AgentProposal JSON"):
+            st.json(run.agent_proposal.model_dump(mode="json"))
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="tp-card"><h3>Trust Ladder</h3>', unsafe_allow_html=True)
@@ -449,6 +513,10 @@ for event in events:
         </div>""",
         unsafe_allow_html=True,
     )
+
+if run.approvals:
+    with st.expander("Human approval records"):
+        st.json([item.model_dump(mode="json") for item in run.approvals])
 
 st.caption(
     "v0 Demo · Fake PayPal gateway · no real money · human approval required · "
