@@ -20,7 +20,7 @@ Legend:
 | 5. Multi-currency | PARTIAL | Money, CNY restrictions, zero-decimal currencies, fixture/live FX and tests implemented; full currency-selection UI remains TODO. |
 | 6. Contract review | PARTIAL | Rule and AI review, evidence validation and fallback implemented; deeper multi-currency contract parsing remains TODO. |
 | 7. PayPal gateway | PARTIAL | Fake and REST gateways implemented; live Sandbox create/send/pay/PAID verified. MCP and real Webhook verification remain TODO. |
-| 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy and fallback implemented; dynamic tool-selected execution loop remains PARTIAL. |
+| 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy, fallback and ordered create/send tool execution implemented; broader generic tool-selection loop remains PARTIAL. |
 | 9. Buyer/seller negotiation | TODO | Not implemented. |
 | 10. Trust Ladder | PARTIAL | Three-stage ladder, per-stage approval and unlock implemented; more risk-driven amount policy remains TODO. |
 | 11. Trust Passport | PARTIAL | JSON, risk, FX, approvals, settlements and audit hash implemented; PDF, public verification and agent-action detail remain TODO. |

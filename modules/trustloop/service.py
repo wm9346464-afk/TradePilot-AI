@@ -27,6 +27,7 @@ from .models import (
     SettlementPlan,
     SettlementRecord,
     StatusEvent,
+    ToolRequest,
     TrustMilestone,
     TrustPassport,
 )
@@ -169,6 +170,7 @@ class TrustLoopService:
             trial_amount=trial_amount,
             deposit_amount=deposit_amount,
         )
+        proposal = self._ensure_required_stage_tools(proposal)
         self.policy_engine.validate_agent_proposal(proposal)
         self.tool_registry.validate_proposal(
             proposal.requested_tools,
@@ -630,6 +632,42 @@ class TrustLoopService:
             amount=money(amount, currency),
             invoice_currency=currency,
             unlock_condition=unlock_condition,
+        )
+
+    def _ensure_required_stage_tools(self, proposal):
+        """Never rely on the model to remember mandatory financial tools."""
+        existing = {item.tool_name: item for item in proposal.requested_tools}
+        create = existing.get(
+            "create_invoice",
+            ToolRequest(
+                tool_name="create_invoice",
+                arguments={"milestone_sequence": 1},
+                reason="Required by the deterministic financial workflow.",
+            ),
+        )
+        send = existing.get(
+            "send_invoice",
+            ToolRequest(
+                tool_name="send_invoice",
+                arguments={"milestone_sequence": 1},
+                reason="Required after invoice creation and human approval.",
+            ),
+        )
+        others = [
+            item
+            for item in proposal.requested_tools
+            if item.tool_name not in {"create_invoice", "send_invoice"}
+        ]
+        normalized = [create, send, *others]
+        original_names = [item.tool_name for item in proposal.requested_tools]
+        normalized_names = [item.tool_name for item in normalized]
+        warnings = list(proposal.warnings)
+        if original_names != normalized_names:
+            warnings.append(
+                "System enforced required create_invoice and send_invoice tools for safety."
+            )
+        return proposal.model_copy(
+            update={"requested_tools": normalized, "warnings": warnings}
         )
 
     def _find_milestone(

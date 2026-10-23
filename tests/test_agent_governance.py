@@ -9,6 +9,9 @@ from modules.trustloop.agent.tools import (
 from modules.trustloop.models import ToolRequest
 from modules.trustloop.service import build_demo_service, demo_deal_input
 from modules.trustloop.agent.planner import RuleBasedPlanner
+from modules.trustloop.agent.executor import AgentToolExecutionError, AgentToolExecutor
+from modules.trustloop.enums import DealState
+from modules.trustloop.agent.planner import RuleBasedPlanner
 
 
 def test_rule_based_planner_returns_structured_proposal():
@@ -63,4 +66,62 @@ def test_service_persists_agent_proposal_and_audits_it():
     assert run.plan is not None
     event_types = [event.event_type for event in service.get_audit_events(run.run_id)]
     assert "AGENT_PROPOSAL_CREATED" in event_types
+
+
+def test_agent_executor_runs_requested_invoice_tools_in_order():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+    run = service.approve_plan(run.run_id)
+
+    run = AgentToolExecutor(service).execute_stage_invoice_tools(run.run_id)
+
+    assert run.state == DealState.AWAITING_PAYMENT
+    assert run.plan.milestones[0].invoice_id is not None
+
+
+def test_agent_executor_rejects_missing_send_tool():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+    run.agent_proposal.requested_tools = [
+        item for item in run.agent_proposal.requested_tools if item.tool_name != "send_invoice"
+    ]
+    service._runs[run.run_id] = run
+    run = service.approve_plan(run.run_id)
+
+    with pytest.raises(AgentToolExecutionError, match="send_invoice"):
+        AgentToolExecutor(service).execute_stage_invoice_tools(run.run_id)
+
+
+def test_service_enforces_required_tools_when_planner_omits_them():
+    class NoToolsPlanner:
+        def propose(self, run, **kwargs):
+            proposal = RuleBasedPlanner().propose(run, **kwargs)
+            return proposal.model_copy(
+                update={"requested_tools": [], "warnings": []}
+            )
+
+    service = build_demo_service()
+    service.agent_planner = NoToolsPlanner()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+
+    assert [item.tool_name for item in run.agent_proposal.requested_tools] == [
+        "create_invoice",
+        "send_invoice",
+    ]
+    assert any("enforced" in warning for warning in run.agent_proposal.warnings)
 

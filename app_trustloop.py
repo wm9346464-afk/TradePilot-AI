@@ -13,6 +13,7 @@ from modules.config import load_config
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
 from modules.trustloop.security import InMemoryRateLimiter, RateLimitExceeded
+from modules.trustloop.agent.executor import AgentToolExecutor
 
 
 def _complete_after_payment(service, run):
@@ -279,8 +280,7 @@ if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
                 rate_limiter["financial"].check("approve_stage")
                 with st.spinner("Applying approval and creating the PayPal invoice..."):
                     run = service.approve_plan(run.run_id)
-                    run = service.create_invoice(run.run_id)
-                    run = service.send_invoice(run.run_id)
+                    run = AgentToolExecutor(service).execute_stage_invoice_tools(run.run_id)
                     if backend_name == "FAKE":
                         run = service.simulate_payment(run.run_id)
                         run = _complete_after_payment(service, run)
@@ -299,10 +299,7 @@ if run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED} and serv
         try:
             rate_limiter["financial"].check("resume_stage")
             with st.spinner("Resuming the approved PayPal stage..."):
-                if run.state == DealState.INVOICE_CREATING:
-                    run = service.create_invoice(run.run_id)
-                if run.state == DealState.INVOICE_CREATED:
-                    run = service.send_invoice(run.run_id)
+                run = AgentToolExecutor(service).execute_stage_invoice_tools(run.run_id)
                 if backend_name == "FAKE":
                     run = service.simulate_payment(run.run_id)
                     run = _complete_after_payment(service, run)
