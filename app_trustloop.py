@@ -119,15 +119,7 @@ def _load_linked_run(run_id: str):
 
 
 def _complete_after_payment(service, run):
-    run = service.complete_milestone(run.run_id)
-    if run.plan and any(
-        item.status.value != "PAID" for item in run.plan.milestones
-    ):
-        run = service.request_next_milestone(run.run_id)
-    else:
-        service.issue_passport(run.run_id)
-        run = service.get_run(run.run_id)
-    return run
+    return service.advance_after_payment(run.run_id)
 
 
 st.set_page_config(

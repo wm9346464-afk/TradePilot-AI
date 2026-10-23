@@ -64,3 +64,35 @@ $env:FX_PROVIDER="fixture"
 
 Use `FX_PROVIDER=live` for Frankfurter reference rates when network access is available.
 
+## Verified Webhook endpoint
+
+`webhook_server.py` is a small independent HTTP service that verifies PayPal's
+transmission signature before processing an invoice event. It never trusts the
+amount or status in the webhook body; after verification it queries PayPal again
+and advances only when the authoritative status is `PAID`.
+
+Add these values to `.env`:
+
+```env
+PAYPAL_WEBHOOK_ID=WH-xxxxxxxxxxxxxxxx
+TRUSTLOOP_STORE_PATH=data/trustloop.db
+WEBHOOK_HOST=0.0.0.0
+WEBHOOK_PORT=8787
+```
+
+Start the endpoint:
+
+```powershell
+.\.venv\Scripts\python.exe webhook_server.py
+```
+
+Expose it behind HTTPS and register this exact URL in the PayPal developer
+dashboard:
+
+```text
+https://your-domain.example/paypal/webhook
+```
+
+Subscribe to `INVOICING.INVOICE.PAID`. A local health check is available at
+`http://127.0.0.1:8787/health`.
+

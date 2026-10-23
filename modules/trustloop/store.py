@@ -43,6 +43,9 @@ class RunStore(Protocol):
     def find_run_by_passport(self, passport_id: str) -> DealRun | None:
         ...
 
+    def find_run_by_invoice(self, invoice_id: str) -> DealRun | None:
+        ...
+
     def list_recent_runs(self, *, limit: int = 10) -> list[DealRun]:
         ...
 
@@ -89,6 +92,13 @@ class SQLiteRunStore:
                     result_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS invoice_index (
+                    run_id TEXT NOT NULL,
+                    invoice_id TEXT NOT NULL,
+                    PRIMARY KEY (run_id, invoice_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_invoice_index_invoice
+                    ON invoice_index(invoice_id);
                 """
             )
 
@@ -112,6 +122,14 @@ class SQLiteRunStore:
                 run.model_dump_json(),
                 run.updated_at.isoformat(),
             ),
+        )
+        connection.executemany(
+            "INSERT OR IGNORE INTO invoice_index(run_id, invoice_id) VALUES (?, ?)",
+            [
+                (run.run_id, invoice.invoice_id)
+                for invoice in run.invoices
+                if invoice.invoice_id
+            ],
         )
 
     def save_run(self, run: DealRun) -> None:
@@ -215,6 +233,19 @@ class SQLiteRunStore:
             row = connection.execute(
                 "SELECT run_json FROM runs WHERE passport_id = ?",
                 (passport_id,),
+            ).fetchone()
+        return DealRun.model_validate_json(row["run_json"]) if row else None
+
+    def find_run_by_invoice(self, invoice_id: str) -> DealRun | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT runs.run_json FROM invoice_index
+                JOIN runs ON runs.run_id = invoice_index.run_id
+                WHERE invoice_index.invoice_id = ?
+                LIMIT 1
+                """,
+                (invoice_id,),
             ).fetchone()
         return DealRun.model_validate_json(row["run_json"]) if row else None
 

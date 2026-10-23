@@ -509,6 +509,27 @@ class TrustLoopService:
         self._save(run)
         return run
 
+    def advance_after_payment(self, run_id: str) -> DealRun:
+        """Complete a verified payment and unlock or issue the next evidence step."""
+        run = self.get_run(run_id)
+        if run.state in {
+            DealState.MILESTONE_COMPLETED,
+            DealState.AWAITING_APPROVAL,
+            DealState.PASSPORT_ISSUED,
+        }:
+            return run
+        if run.state != DealState.PAYMENT_CONFIRMED:
+            raise PolicyViolation(
+                f"Run {run_id} is in {run.state.value}, expected PAYMENT_CONFIRMED"
+            )
+        run = self.complete_milestone(run_id)
+        if run.plan and any(
+            item.status != MilestoneStatus.PAID for item in run.plan.milestones
+        ):
+            return self.request_next_milestone(run_id)
+        self.issue_passport(run_id)
+        return self.get_run(run_id)
+
     def request_next_milestone(self, run_id: str) -> DealRun:
         """Return to approval for the next READY milestone."""
         run = self._require_run(run_id, DealState.MILESTONE_COMPLETED)
@@ -652,6 +673,18 @@ class TrustLoopService:
         if not self.store:
             return None
         run = self.store.find_run_by_passport(passport_id)
+        if run is not None:
+            self._runs[run.run_id] = run
+            self._stores_audit_from_store(run.run_id)
+        return run
+
+    def find_run_by_invoice(self, invoice_id: str) -> DealRun | None:
+        for run in self._runs.values():
+            if any(item.invoice_id == invoice_id for item in run.invoices):
+                return run
+        if not self.store:
+            return None
+        run = self.store.find_run_by_invoice(invoice_id)
         if run is not None:
             self._runs[run.run_id] = run
             self._stores_audit_from_store(run.run_id)
