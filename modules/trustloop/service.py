@@ -7,6 +7,8 @@ from decimal import Decimal
 
 from modules.contract_checker import SAMPLE_CONTRACT
 
+from .agent.planner import RuleBasedPlanner
+from .agent.tools import ToolRegistry, build_default_tool_registry
 from .audit import AuditEvent, AuditLog
 from .currency import CurrencyPolicy
 from .enums import DealState, MilestoneStatus, RunMode
@@ -41,6 +43,8 @@ class TrustLoopService:
         policy_engine: PolicyEngine,
         currency_policy: CurrencyPolicy | None = None,
         state_machine: DealStateMachine | None = None,
+        agent_planner=None,
+        tool_registry: ToolRegistry | None = None,
     ) -> None:
         self.contract_gateway = contract_gateway
         self.paypal_gateway = paypal_gateway
@@ -48,6 +52,8 @@ class TrustLoopService:
         self.policy_engine = policy_engine
         self.currency_policy = currency_policy or CurrencyPolicy()
         self.state_machine = state_machine or DealStateMachine()
+        self.agent_planner = agent_planner or RuleBasedPlanner()
+        self.tool_registry = tool_registry or build_default_tool_registry()
         self._runs: dict[str, DealRun] = {}
         self._audits: dict[str, AuditLog] = {}
 
@@ -154,35 +160,33 @@ class TrustLoopService:
                 selected_currency,
             )
 
+        proposal = self.agent_planner.propose(
+            run,
+            invoice_currency=selected_currency,
+            sample_amount=sample_amount,
+            trial_amount=trial_amount,
+            deposit_amount=deposit_amount,
+        )
+        self.policy_engine.validate_agent_proposal(proposal)
+        self.tool_registry.validate_proposal(
+            proposal.requested_tools,
+            needs_human_approval=proposal.needs_human_approval,
+        )
         milestones = [
-            self._new_milestone(
-                1,
-                "样品费",
-                "Verifies payment capability and intent before a larger trial order.",
-                sample_amount,
-                selected_currency,
-                "Buyer accepts the review findings and approves the milestone plan.",
-            ),
-            self._new_milestone(
-                2,
-                "小额试单",
-                "Validates fulfilment and acceptance with limited exposure.",
-                trial_amount,
-                selected_currency,
-                "Sample-fee payment is confirmed by PayPal.",
-            ),
-            self._new_milestone(
-                3,
-                "大货保证金",
-                "Reduces unsecured exposure before larger shipment or credit terms.",
-                deposit_amount,
-                selected_currency,
-                "Trial order payment and acceptance are complete.",
-            ),
+            TrustMilestone(
+                sequence=index,
+                name=item.name,
+                purpose=item.purpose,
+                amount=item.amount,
+                invoice_currency=item.invoice_currency,
+                unlock_condition=item.unlock_condition,
+            )
+            for index, item in enumerate(proposal.recommended_ladder, start=1)
         ]
         milestones[0] = milestones[0].model_copy(update={"status": MilestoneStatus.READY})
 
         plan = ActionPlan(
+            proposed_by="AGENT" if proposal.planner_type == "LLM" else "RULE_ENGINE",
             settlement_plan=SettlementPlan(
                 contract_money=run.deal.contract_value,
                 invoice_currency=selected_currency,
@@ -190,11 +194,7 @@ class TrustLoopService:
                 fx_snapshot=fx_snapshot,
             ),
             milestones=milestones,
-            rationale=(
-                f"Requested credit terms: {run.deal.requested_credit_days} days. "
-                f"Contract review found {run.risk.high_count if run.risk else 0} high-risk issue(s). "
-                "Use a staged trust ladder instead of direct unsecured credit."
-            ),
+            rationale=proposal.rationale,
             risks_addressed=[
                 issue.description for issue in (run.risk.issues if run.risk else [])
             ],
@@ -206,9 +206,29 @@ class TrustLoopService:
             requires_human_approval=True,
         )
         self.policy_engine.validate_plan(plan)
-        run = run.model_copy(update={"plan": plan})
+        run = run.model_copy(
+            update={
+                "agent_proposal": proposal,
+                "plan": plan,
+                "active_milestone_id": milestones[0].milestone_id,
+            }
+        )
         run = self.state_machine.transition(run, "PLAN_CREATED")
         run = self.state_machine.transition(run, "APPROVAL_REQUESTED")
+        self._audit(
+            run_id,
+            "AGENT_PROPOSAL_CREATED",
+            "AGENT",
+            "RuleBasedPlanner",
+            {
+                "decision": proposal.decision,
+                "planner_type": proposal.planner_type,
+                "confidence": str(proposal.confidence),
+                "tools": [item.tool_name for item in proposal.requested_tools],
+                "evidence_refs": proposal.evidence_refs,
+                "warnings": proposal.warnings,
+            },
+        )
         self._audit(
             run_id,
             "PLAN_PROPOSED",
@@ -387,10 +407,13 @@ class TrustLoopService:
         self.policy_engine.ensure_payment_can_complete(milestone)
         run = self.state_machine.transition(run, "MILESTONE_COMPLETED")
         next_sequence = milestone.sequence + 1
+        next_ready_id = None
         for item in run.plan.milestones if run.plan else []:
             if item.sequence == next_sequence and item.status == MilestoneStatus.LOCKED:
                 item.status = MilestoneStatus.READY
+                next_ready_id = item.milestone_id
                 break
+        run = run.model_copy(update={"active_milestone_id": next_ready_id})
         self._audit(
             run_id,
             "MILESTONE_COMPLETED",
@@ -399,6 +422,35 @@ class TrustLoopService:
             {
                 "milestone_id": milestone.milestone_id,
                 "next_milestone_unlocked": next_sequence,
+            },
+        )
+        self._save(run)
+        return run
+
+    def request_next_milestone(self, run_id: str) -> DealRun:
+        """Return to approval for the next READY milestone."""
+        run = self._require_run(run_id, DealState.MILESTONE_COMPLETED)
+        next_milestone = next(
+            (
+                item
+                for item in (run.plan.milestones if run.plan else [])
+                if item.status == MilestoneStatus.READY
+            ),
+            None,
+        )
+        if next_milestone is None:
+            raise PolicyViolation("No READY milestone remains; issue the passport instead")
+        run = run.model_copy(update={"active_milestone_id": next_milestone.milestone_id})
+        run = self.state_machine.transition(run, "NEXT_MILESTONE_REQUESTED")
+        self._audit(
+            run_id,
+            "NEXT_MILESTONE_REQUESTED",
+            "SYSTEM",
+            "TrustLoopService",
+            {
+                "milestone_id": next_milestone.milestone_id,
+                "sequence": next_milestone.sequence,
+                "amount": next_milestone.amount.model_dump(mode="json"),
             },
         )
         self._save(run)
@@ -448,6 +500,7 @@ class TrustLoopService:
         )
         run = run.model_copy(update={"passport": passport})
         run = self.state_machine.transition(run, "PASSPORT_ISSUED")
+        run = run.model_copy(update={"active_milestone_id": None})
         self._audit(
             run_id,
             "PASSPORT_ISSUED",
@@ -469,11 +522,18 @@ class TrustLoopService:
         run = self.start_case(deal_input)
         run = self.review_contract(run.run_id, SAMPLE_CONTRACT, use_ai=False)
         run = self.propose_plan(run.run_id, invoice_currency="USD")
-        run = self.approve_plan(run.run_id)
-        run = self.create_invoice(run.run_id)
-        run = self.send_invoice(run.run_id)
-        run = self.simulate_payment(run.run_id)
-        run = self.complete_milestone(run.run_id)
+        while run.plan and any(
+            item.status != MilestoneStatus.PAID for item in run.plan.milestones
+        ):
+            run = self.approve_plan(run.run_id)
+            run = self.create_invoice(run.run_id)
+            run = self.send_invoice(run.run_id)
+            run = self.simulate_payment(run.run_id)
+            run = self.complete_milestone(run.run_id)
+            if run.plan and any(
+                item.status != MilestoneStatus.PAID for item in run.plan.milestones
+            ):
+                run = self.request_next_milestone(run.run_id)
         self.issue_passport(run.run_id)
         return self._runs[run.run_id]
 
@@ -520,6 +580,11 @@ class TrustLoopService:
                 if item.milestone_id == milestone_id:
                     return item
             raise PolicyViolation(f"Unknown milestone: {milestone_id}")
+        if run.active_milestone_id:
+            for item in run.plan.milestones:
+                if item.milestone_id == run.active_milestone_id:
+                    return item
+            raise PolicyViolation(f"Unknown active milestone: {run.active_milestone_id}")
         ready = [item for item in run.plan.milestones if item.status == MilestoneStatus.READY]
         if ready:
             return ready[0]

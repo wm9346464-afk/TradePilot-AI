@@ -128,6 +128,25 @@ class ProposedMilestone(StrictModel):
         return normalize_currency_code(value)
 
 
+class ToolRequest(StrictModel):
+    tool_name: str
+    arguments: dict = Field(default_factory=dict)
+    reason: str
+
+
+class AgentProposal(StrictModel):
+    decision: Literal["PROCEED", "REVIEW", "BLOCK"]
+    rationale: str
+    evidence_refs: list[str] = Field(default_factory=list)
+    recommended_ladder: list[ProposedMilestone]
+    requested_tools: list[ToolRequest] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    needs_human_approval: bool = True
+    approval_reason: str = "Financial actions require explicit human approval"
+    planner_type: Literal["RULE_BASED", "LLM"] = "RULE_BASED"
+    confidence: Decimal = Field(default=Decimal("0.70"), ge=0, le=1)
+
+
 class SettlementPlan(StrictModel):
     contract_money: Money
     invoice_currency: str
@@ -239,7 +258,9 @@ class DealRun(StrictModel):
     state: DealState = DealState.INTAKE
     deal: DealCase
     risk: RiskAssessment | None = None
+    agent_proposal: AgentProposal | None = None
     plan: ActionPlan | None = None
+    active_milestone_id: str | None = None
     invoices: list[PaymentResult] = Field(default_factory=list)
     approvals: list[ApprovalRecord] = Field(default_factory=list)
     passport: TrustPassport | None = None

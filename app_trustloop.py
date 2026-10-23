@@ -176,6 +176,18 @@ with center:
     st.markdown(f"**Plan:** {run.plan.plan_id if run.plan else 'N/A'}")
     st.markdown(f"**Approval:** {run.plan.approval_reason if run.plan else 'N/A'}")
     st.markdown(f"**Rationale:** {html.escape(run.plan.rationale if run.plan else '')}")
+    if run.agent_proposal:
+        st.markdown(
+            f"**Agent decision:** {run.agent_proposal.decision} · "
+            f"{run.agent_proposal.planner_type} · "
+            f"confidence {run.agent_proposal.confidence}"
+        )
+        requested_tools = ", ".join(
+            item.tool_name for item in run.agent_proposal.requested_tools
+        )
+        st.markdown(f"**Requested tools:** {html.escape(requested_tools)}")
+        for warning in run.agent_proposal.warnings:
+            st.warning(warning)
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown('<div class="tp-card"><h3>Trust Ladder</h3>', unsafe_allow_html=True)
@@ -214,11 +226,14 @@ with right:
 
     st.markdown('<div class="tp-card"><h3>Payment evidence</h3>', unsafe_allow_html=True)
     if passport and passport.settlements:
-        settlement = passport.settlements[0]
-        st.markdown(f"**Invoice:** {html.escape(settlement.invoice_number)}")
-        st.markdown(f"**Amount:** {settlement.amount.format()}")
-        st.markdown("**Status:** <span class='tp-status tp-paid'>PAID</span>", unsafe_allow_html=True)
-        st.markdown(f"**Transaction:** {html.escape(settlement.transaction_id or 'N/A')}")
+        for settlement in passport.settlements:
+            st.markdown(
+                f"**{html.escape(settlement.invoice_number)}** · "
+                f"{settlement.amount.format()} · "
+                "<span class='tp-status tp-paid'>PAID</span>",
+                unsafe_allow_html=True,
+            )
+            st.caption(f"Transaction: {settlement.transaction_id or 'N/A'}")
     else:
         st.info("No payment evidence yet.")
     st.markdown("</div>", unsafe_allow_html=True)

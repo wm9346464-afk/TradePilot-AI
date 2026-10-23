@@ -77,15 +77,17 @@ def test_full_demo_flow_creates_audited_passport():
 
     assert run.state == DealState.PASSPORT_ISSUED
     assert run.risk is not None
+    assert run.agent_proposal is not None
+    assert run.agent_proposal.needs_human_approval is True
     assert run.plan is not None
     assert run.passport is not None
     assert run.passport.settlements
     assert run.passport.settlements[0].status == "PAID"
+    assert len(run.passport.settlements) == 3
     assert run.plan.settlement_plan.invoice_currency == "USD"
     assert run.plan.settlement_plan.fx_snapshot is not None
     assert run.plan.settlement_plan.fx_snapshot.mode == "DEMO_FIXTURE"
-    assert run.plan.milestones[0].status == MilestoneStatus.PAID
-    assert run.plan.milestones[1].status == MilestoneStatus.READY
+    assert all(item.status == MilestoneStatus.PAID for item in run.plan.milestones)
     assert service.verify_audit_chain(run.run_id) is True
     assert len(service.get_audit_events(run.run_id)) >= 8
 

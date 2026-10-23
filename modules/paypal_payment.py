@@ -213,6 +213,7 @@ def create_invoice_api(
     currency: str = "USD",
     contract_id: str = "",
     payment_type: str = "",
+    idempotency_key: str = "",
 ) -> dict:
     """
     调用PayPal API创建发票（草稿状态）
@@ -240,7 +241,7 @@ def create_invoice_api(
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}",
             "Prefer": "return=representation",
-            "PayPal-Request-Id": str(uuid.uuid4()),
+            "PayPal-Request-Id": idempotency_key or str(uuid.uuid4()),
         }
 
         # 构造发票明细
@@ -352,7 +353,7 @@ def create_invoice_api(
         return {"success": False, "error": f"创建PayPal发票失败: {str(e)}"}
 
 
-def send_invoice_api(invoice_id: str) -> dict:
+def send_invoice_api(invoice_id: str, idempotency_key: str = "") -> dict:
     """
     发送发票（将草稿发票发送给买家，生成付款链接）
 
@@ -366,7 +367,7 @@ def send_invoice_api(invoice_id: str) -> dict:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {access_token}",
-            "PayPal-Request-Id": str(uuid.uuid4()),
+            "PayPal-Request-Id": idempotency_key or str(uuid.uuid4()),
         }
         response = _request_with_retry(
             "POST",

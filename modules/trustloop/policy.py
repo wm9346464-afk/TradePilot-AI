@@ -8,7 +8,14 @@ from pydantic import BaseModel, Field
 
 from .enums import MilestoneStatus
 from .fx import FxRateProvider
-from .models import ActionPlan, ApprovalRecord, DealRun, Money, TrustMilestone
+from .models import (
+    ActionPlan,
+    AgentProposal,
+    ApprovalRecord,
+    DealRun,
+    Money,
+    TrustMilestone,
+)
 
 
 class PolicyViolation(ValueError):
@@ -54,6 +61,28 @@ class PolicyEngine:
             raise PolicyViolation("Milestone sequence must be contiguous and start at 1")
         for milestone in plan.milestones:
             self.validate_milestone(milestone)
+
+    def validate_agent_proposal(self, proposal: AgentProposal) -> None:
+        if not proposal.recommended_ladder:
+            raise PolicyViolation("Agent proposal must include at least one milestone")
+        if any(
+            request.tool_name in {"create_invoice", "send_invoice"}
+            for request in proposal.requested_tools
+        ) and not proposal.needs_human_approval:
+            raise PolicyViolation("Financial tool requests must require human approval")
+        for milestone in proposal.recommended_ladder:
+            if milestone.amount.amount <= 0:
+                raise PolicyViolation("Proposed milestone amount must be positive")
+            if milestone.invoice_currency not in self.config.allowed_currencies:
+                raise PolicyViolation(
+                    f"Invoice currency {milestone.invoice_currency} is not allowed"
+                )
+            if milestone.amount.currency != milestone.invoice_currency:
+                raise PolicyViolation("Proposed milestone currency mismatch")
+            if self._usd_value(milestone.amount) > self.config.max_invoice_amount_usd:
+                raise PolicyViolation(
+                    f"Proposed milestone exceeds max amount: {milestone.amount.format()}"
+                )
 
     def validate_approval(
         self,

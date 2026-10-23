@@ -42,6 +42,7 @@ TRANSITIONS: dict[DealState, dict[str, DealState]] = {
     },
     DealState.MILESTONE_COMPLETED: {
         "PASSPORT_ISSUED": DealState.PASSPORT_ISSUED,
+        "NEXT_MILESTONE_REQUESTED": DealState.AWAITING_APPROVAL,
     },
     DealState.FAILED: {},
     DealState.CANCELLED: {},
