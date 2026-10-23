@@ -39,6 +39,7 @@ desktop.ini
 
 # 测试和覆盖率
 .pytest_cache/
+.pytest-tmp/
 .coverage
 htmlcov/
 .tox/

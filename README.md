@@ -235,12 +235,12 @@ See [SECURITY.md](SECURITY.md).
 
 ```powershell
 $env:PYTHONDONTWRITEBYTECODE="1"
-.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=..\..\work\pytest-basetemp
+.\.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=.pytest-tmp
 ```
 
 Current status:
 
-- 42 automated tests passing;
+- 43 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
