@@ -1,0 +1,251 @@
+"""TradePilot TrustLoop - v0 deterministic Deal Room."""
+
+from __future__ import annotations
+
+import html
+import json
+
+import streamlit as st
+
+from modules.trustloop.service import build_demo_service, demo_deal_input
+
+
+st.set_page_config(
+    page_title="TradePilot TrustLoop",
+    page_icon="TP",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+st.markdown(
+    """
+<style>
+    :root {
+        --pp-blue: #0070ba;
+        --pp-blue-dark: #003087;
+        --pp-ink: #111827;
+        --pp-muted: #667085;
+        --pp-border: #d9e2ec;
+        --pp-panel: #ffffff;
+        --pp-bg: #f5f8fc;
+        --pp-good: #087443;
+        --pp-warn: #b54708;
+        --pp-danger: #b42318;
+    }
+    .stApp { background: var(--pp-bg); }
+    .block-container { max-width: 1380px; padding-top: 2rem; }
+    .tp-hero {
+        background: linear-gradient(135deg, #003087 0%, #0070ba 70%, #009cde 100%);
+        color: white; border-radius: 20px; padding: 28px 32px; margin-bottom: 20px;
+    }
+    .tp-hero h1 { color: white; margin: 0 0 8px 0; font-size: 2.25rem; }
+    .tp-hero p { color: #eaf4ff; max-width: 850px; margin: 0; line-height: 1.55; }
+    .tp-badge {
+        display: inline-block; border-radius: 999px; padding: 5px 11px;
+        font-size: 0.78rem; font-weight: 700; margin-right: 6px;
+    }
+    .tp-live { background: #e8f5ee; color: var(--pp-good); }
+    .tp-demo { background: #fff3e8; color: var(--pp-warn); }
+    .tp-card {
+        background: var(--pp-panel); border: 1px solid var(--pp-border);
+        border-radius: 16px; padding: 18px 20px; margin-bottom: 14px;
+        box-shadow: 0 5px 20px rgba(16, 24, 40, 0.04);
+    }
+    .tp-card h3 { color: var(--pp-blue-dark); margin-top: 0; }
+    .tp-muted { color: var(--pp-muted); font-size: 0.9rem; }
+    .tp-money { font-size: 1.55rem; font-weight: 800; color: var(--pp-blue-dark); }
+    .tp-arrow { color: var(--pp-muted); font-size: 1.25rem; padding: 0 8px; }
+    .tp-milestone {
+        border: 1px solid var(--pp-border); border-radius: 14px;
+        padding: 12px 14px; margin-bottom: 10px; background: white;
+    }
+    .tp-status { font-weight: 700; font-size: 0.82rem; }
+    .tp-ready { color: var(--pp-blue); }
+    .tp-paid { color: var(--pp-good); }
+    .tp-locked { color: var(--pp-muted); }
+    .tp-event {
+        border-left: 3px solid var(--pp-blue); padding: 8px 12px;
+        margin-left: 5px; background: #f8fbff;
+    }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+<div class="tp-hero">
+  <h1>TradePilot TrustLoop</h1>
+  <p>An agentic trust workflow for first-time cross-border trade: review the contract,
+  build a staged payment path, issue a PayPal invoice, verify payment, and turn the evidence
+  into a portable Trust Passport.</p>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<span class="tp-badge tp-demo">DEMO / FAKE PAYPAL</span>'
+    '<span class="tp-badge tp-demo">CNY contract → USD invoice</span>'
+    '<span class="tp-badge tp-demo">HUMAN APPROVAL REQUIRED</span>',
+    unsafe_allow_html=True,
+)
+st.warning(
+    "This v0 runs entirely with deterministic Demo data and a fake PayPal gateway. "
+    "No real payment, no real customer data, and no production claim."
+)
+
+left, right = st.columns([4, 1])
+with left:
+    st.markdown("### One verified payment. A new trust relationship.")
+    st.caption(
+        "Demo case: a first-time buyer requests 30-day credit for a CNY 1,825,000 rebar order. "
+        "The agent proposes a staged trust ladder instead of unsecured credit."
+    )
+with right:
+    run_demo = st.button("Run 90-second deal", type="primary", use_container_width=True)
+
+if run_demo:
+    with st.spinner("Reviewing contract, planning milestones, and simulating PayPal..."):
+        service = build_demo_service()
+        run = service.run_full_demo(demo_deal_input())
+        events = service.get_audit_events(run.run_id)
+        st.session_state["trustloop_run"] = run
+        st.session_state["trustloop_events"] = events
+
+run = st.session_state.get("trustloop_run")
+events = st.session_state.get("trustloop_events", [])
+
+if not run:
+    st.markdown(
+        """
+<div class="tp-card">
+  <h3>What will happen</h3>
+  <p>1. The contract review finds evidence-backed risks.</p>
+  <p>2. The agent converts a cross-border CNY contract into a USD PayPal milestone plan.</p>
+  <p>3. A human approval record binds the exact amount and currency.</p>
+  <p>4. The fake gateway returns a PayPal-like invoice and PAID event.</p>
+  <p>5. The Trust Passport records the risk, payment, FX snapshot, approvals, and audit hash.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.stop()
+
+passport = run.passport
+fx = run.plan.settlement_plan.fx_snapshot if run.plan else None
+paid_milestones = [
+    item for item in (run.plan.milestones if run.plan else []) if item.status.value == "PAID"
+]
+
+summary_cols = st.columns(4)
+summary_cols[0].metric("Contract value", run.deal.contract_value.format())
+summary_cols[1].metric(
+    "Invoice currency",
+    run.plan.settlement_plan.invoice_currency if run.plan else "N/A",
+)
+summary_cols[2].metric("Paid milestones", f"{len(paid_milestones)}/{len(run.plan.milestones) if run.plan else 0}")
+summary_cols[3].metric("Passport", passport.passport_id if passport else "Pending")
+
+left, center, right = st.columns([1.08, 1.12, 1.0], gap="large")
+
+with left:
+    st.markdown('<div class="tp-card"><h3>Deal & risk evidence</h3>', unsafe_allow_html=True)
+    st.markdown(f"**Buyer:** {html.escape(run.deal.buyer.name)}")
+    st.markdown(f"**Seller:** {html.escape(run.deal.seller.name)}")
+    st.markdown(f"**Product:** {html.escape(run.deal.product_name)}")
+    st.markdown(f"**Quantity:** {run.deal.quantity} {html.escape(run.deal.quantity_unit)}")
+    st.markdown(f"**Requested credit:** {run.deal.requested_credit_days} days")
+    st.markdown(
+        f"**Decision:** {run.risk.decision.value if run.risk else 'N/A'} "
+        f"({run.risk.high_count if run.risk else 0} high / "
+        f"{run.risk.medium_count if run.risk else 0} medium)"
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if run.risk:
+        for issue in run.risk.issues[:6]:
+            with st.expander(f"{issue.severity.value} · {issue.type.value}"):
+                st.markdown(f"**Issue:** {html.escape(issue.description)}")
+                st.markdown(f"**Suggestion:** {html.escape(issue.suggestion)}")
+                if issue.evidence_quote:
+                    st.code(issue.evidence_quote)
+
+with center:
+    st.markdown('<div class="tp-card"><h3>Agent plan</h3>', unsafe_allow_html=True)
+    st.markdown(f"**Plan:** {run.plan.plan_id if run.plan else 'N/A'}")
+    st.markdown(f"**Approval:** {run.plan.approval_reason if run.plan else 'N/A'}")
+    st.markdown(f"**Rationale:** {html.escape(run.plan.rationale if run.plan else '')}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="tp-card"><h3>Trust Ladder</h3>', unsafe_allow_html=True)
+    for milestone in run.plan.milestones if run.plan else []:
+        status_class = "tp-paid" if milestone.status.value == "PAID" else "tp-ready" if milestone.status.value == "READY" else "tp-locked"
+        st.markdown(
+            f"""<div class="tp-milestone">
+            <strong>{milestone.sequence}. {html.escape(milestone.name)}</strong>
+            <span style="float:right" class="tp-status {status_class}">{milestone.status.value}</span><br/>
+            <span class="tp-muted">{html.escape(milestone.purpose)}</span><br/>
+            <span class="tp-money">{milestone.amount.format()}</span>
+            </div>""",
+            unsafe_allow_html=True,
+        )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with right:
+    st.markdown('<div class="tp-card"><h3>Currency & FX</h3>', unsafe_allow_html=True)
+    if run.plan:
+        st.markdown(
+            f"<span class='tp-money'>{run.deal.contract_value.format()}</span>"
+            "<span class='tp-arrow'>→</span>"
+            f"<span class='tp-money'>{run.plan.settlement_plan.invoice_currency}</span>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<span class='tp-muted'>{html.escape(run.plan.settlement_plan.invoice_currency)} is used for the PayPal milestone invoice.</span>",
+            unsafe_allow_html=True,
+        )
+    if fx:
+        st.markdown(f"**FX source:** {html.escape(fx.source)}")
+        st.markdown(f"**Rate:** 1 {fx.base_currency} = {fx.rate:.4f} {fx.quote_currency}")
+        st.markdown(f"**Observed:** {fx.observed_at.isoformat()}")
+        st.caption("Reference conversion only. Actual PayPal settlement may differ.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown('<div class="tp-card"><h3>Payment evidence</h3>', unsafe_allow_html=True)
+    if passport and passport.settlements:
+        settlement = passport.settlements[0]
+        st.markdown(f"**Invoice:** {html.escape(settlement.invoice_number)}")
+        st.markdown(f"**Amount:** {settlement.amount.format()}")
+        st.markdown("**Status:** <span class='tp-status tp-paid'>PAID</span>", unsafe_allow_html=True)
+        st.markdown(f"**Transaction:** {html.escape(settlement.transaction_id or 'N/A')}")
+    else:
+        st.info("No payment evidence yet.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if passport:
+        st.download_button(
+            "Download Trust Passport JSON",
+            data=json.dumps(passport.model_dump(mode="json"), indent=2, ensure_ascii=False),
+            file_name=f"{passport.passport_id}.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+st.markdown("---")
+st.markdown("### Audit timeline")
+for event in events:
+    st.markdown(
+        f"""<div class="tp-event">
+        <strong>{event.sequence}. {html.escape(event.event_type)}</strong>
+        <span class="tp-muted"> · {html.escape(event.actor_type)} / {html.escape(event.actor_id)}</span><br/>
+        <span class="tp-muted">{event.created_at.isoformat()} · {html.escape(event.event_hash[:16])}...</span>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+st.caption(
+    "v0 Demo · Fake PayPal gateway · no real money · human approval required · "
+    "Trust Passport is not a credit rating or legal opinion."
+)
+
