@@ -1,5 +1,8 @@
 # PayPal Sandbox Setup
 
+> Verification status: on 2026-10-23 a USD 1.00 Sandbox invoice was created,
+> sent, paid by the Personal test account, and queried back as `PAID`.
+
 1. Sign in to <https://developer.paypal.com/>.
 2. Open `Dashboard → Apps & Credentials`.
 3. Select `Sandbox`.

@@ -51,16 +51,16 @@ Implemented:
 - Fixture and HTTP reference FX providers.
 - Fake PayPal gateway with idempotency.
 - PayPal REST adapter with mocked tests.
+- Live PayPal Sandbox invoice creation, sending, buyer payment and PAID status verification.
 - Structured AgentProposal and restricted tool registry.
 - Deterministic planner and structured LLM planner with fallback.
 - Three-stage Trust Ladder with explicit human approvals.
 - Audit hash chain and Trust Passport.
 - Deal Room with Fake and REST paths.
 
-Requires live external verification:
+Requires final external delivery:
 
-- PayPal Sandbox invoice permission.
-- Real buyer payment and status refresh.
 - Streamlit Cloud/Render deployment.
 - Final three-minute video.
+- Optional MCP adapter verification.
 
