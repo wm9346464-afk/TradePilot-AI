@@ -8,7 +8,9 @@ from streamlit.testing.v1 import AppTest
 APP_PATH = Path(__file__).resolve().parent.parent / "app_trustloop.py"
 
 
-def test_trustloop_deal_room_runs_full_demo():
+def test_trustloop_deal_room_runs_full_demo(monkeypatch):
+    monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
+    monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")
     at = AppTest.from_file(str(APP_PATH)).run(timeout=30)
     assert not at.exception
 

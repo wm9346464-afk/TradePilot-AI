@@ -21,6 +21,7 @@ PAYPAL_MERCHANT_EMAIL=sb-xxxx@business.example.com
 PAYPAL_MERCHANT_NAME=TradePilot AI
 PAYPAL_SANDBOX_BUYER_EMAIL=sb-yyyy@personal.example.com
 TRUSTLOOP_PAYPAL_BACKEND=rest
+TRUSTLOOP_USE_LLM=true
 FX_PROVIDER=fixture
 ```
 

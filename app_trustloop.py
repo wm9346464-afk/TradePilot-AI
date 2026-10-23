@@ -135,7 +135,7 @@ if run_demo:
     with st.spinner("Reviewing contract and building the trust ladder..."):
         service = build_runtime_service(
             paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
-            use_llm=True,
+            use_llm=os.getenv("TRUSTLOOP_USE_LLM", "true").strip().lower() != "false",
         )
         run = service.start_case(demo_deal_input())
         from modules.contract_checker import SAMPLE_CONTRACT

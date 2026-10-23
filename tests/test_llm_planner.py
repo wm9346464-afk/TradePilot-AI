@@ -127,7 +127,11 @@ def test_llm_planner_falls_back_on_fabricated_evidence(monkeypatch):
     assert any("deterministic fallback" in warning for warning in proposal.warnings)
 
 
-def test_llm_planner_falls_back_without_config():
+def test_llm_planner_falls_back_without_config(monkeypatch):
+    monkeypatch.setattr(
+        "modules.trustloop.agent.llm_planner.is_llm_config_valid",
+        lambda: False,
+    )
     run = _risk_ready_run()
     planner = LLMPlanner(post=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network called")))
     proposal = planner.propose(run, invoice_currency="USD")
