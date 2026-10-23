@@ -14,6 +14,7 @@ from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
 from modules.trustloop.security import InMemoryRateLimiter, RateLimitExceeded
 from modules.trustloop.agent.executor import AgentToolExecutor
+from modules.trustloop.passport_export import render_passport_html
 
 
 def _complete_after_payment(service, run):
@@ -544,6 +545,13 @@ with right:
             data=json.dumps(passport.model_dump(mode="json"), indent=2, ensure_ascii=False),
             file_name=f"{passport.passport_id}.json",
             mime="application/json",
+            use_container_width=True,
+        )
+        st.download_button(
+            "Download Printable Passport HTML",
+            data=render_passport_html(passport),
+            file_name=f"{passport.passport_id}.html",
+            mime="text/html",
             use_container_width=True,
         )
         if service:

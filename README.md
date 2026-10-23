@@ -242,7 +242,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 55 automated tests passing;
+- 56 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
@@ -272,7 +272,7 @@ tests/                         Unit, integration and AppTest coverage
 - Buyer/seller agent negotiation is a planned enhancement.
 - Persistent event storage and replay across process restarts are planned.
 - Webhook verification logic uses PayPal's official verification API; a production HTTP webhook endpoint is not deployed.
-- Trust Passport supports JSON, integrity verification, and replay export; PDF and a public verification page are planned.
+- Trust Passport supports JSON, printable HTML, integrity verification, and replay export; a public verification page is planned.
 - The project is a Sandbox/Demo and does not move real money.
 
 ---
