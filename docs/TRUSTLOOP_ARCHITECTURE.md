@@ -54,6 +54,7 @@ Implemented:
 - Live PayPal Sandbox invoice creation, sending, buyer payment and PAID status verification.
 - Structured AgentProposal and restricted tool registry.
 - Deterministic planner and structured LLM planner with fallback.
+- Live DeepSeek structured AgentProposal verified with the full three-stage FakePayPal workflow.
 - Three-stage Trust Ladder with explicit human approvals.
 - Audit hash chain and Trust Passport.
 - Deal Room with Fake and REST paths.
