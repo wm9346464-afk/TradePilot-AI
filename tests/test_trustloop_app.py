@@ -282,3 +282,37 @@ def test_public_passport_verification_uses_trusted_store(monkeypatch, tmp_path):
         for metric in at.metric
     )
 
+
+def test_public_verification_missing_passport_keeps_a_way_back(monkeypatch, tmp_path):
+    database = tmp_path / "missing-passport.db"
+    monkeypatch.setenv("TRUSTLOOP_STORE_PATH", str(database))
+    monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
+    monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")
+    at = AppTest.from_file(str(APP_PATH))
+    at.query_params["verify"] = "TP-NOT-FOUND"
+    at.run(timeout=30)
+
+    assert any(
+        "Passport not found" in item.value for item in at.error
+    )
+    assert any(
+        item.label == "Open the Deal Room" for item in at.button
+    )
+
+
+def test_public_verification_store_failure_is_handled(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRUSTLOOP_STORE_PATH", str(tmp_path))
+    monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
+    monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")
+    at = AppTest.from_file(str(APP_PATH))
+    at.query_params["verify"] = "TP-ANY"
+    at.run(timeout=30)
+
+    assert not at.exception
+    assert any(
+        "trusted store could not be opened" in item.value for item in at.error
+    )
+    assert any(
+        item.label == "Open the Deal Room" for item in at.button
+    )
+

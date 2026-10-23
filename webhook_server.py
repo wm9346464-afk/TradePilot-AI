@@ -85,7 +85,17 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": "signature_verification_failed"})
             return
 
-        service = self.server.service_factory()
+        try:
+            service = self.server.service_factory()
+        except Exception as exc:
+            self._send_json(
+                500,
+                {
+                    "error": "service_initialization_failed",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return
         if service.store is None:
             self._send_json(503, {"error": "persistent_store_required"})
             return

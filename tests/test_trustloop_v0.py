@@ -10,7 +10,7 @@ from modules.trustloop.currency import CurrencyPolicy
 from modules.trustloop.enums import DealState, MilestoneStatus
 from modules.trustloop.gateways.paypal import CreateInvoiceRequest
 from modules.trustloop.gateways.fake_paypal import FakePayPalGateway
-from modules.trustloop.fx import FixtureFxRateProvider, HttpFxRateProvider
+from modules.trustloop.fx import FixtureFxRateProvider, FxSnapshot, HttpFxRateProvider
 from modules.trustloop.money import money
 from modules.trustloop.policy import PolicyViolation
 from modules.trustloop.service import (
@@ -77,6 +77,41 @@ def test_fake_gateway_is_idempotent_and_simulates_payment():
     assert sent.status == "SENT"
     assert paid.status == "PAID"
     assert paid.transaction_id == paid_again.transaction_id
+
+
+def test_send_invoice_updates_stored_invoice_status():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    run = service.propose_plan(run.run_id)
+    run = service.approve_plan(run.run_id)
+    run = service.create_invoice(run.run_id)
+    run = service.send_invoice(run.run_id)
+
+    stored_invoice = next(
+        item
+        for item in run.invoices
+        if item.invoice_id == run.plan.milestones[0].invoice_id
+    )
+    assert stored_invoice.status == "SENT"
+
+
+def test_simulated_payment_updates_stored_invoice_to_paid():
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    run = service.propose_plan(run.run_id)
+    run = service.approve_plan(run.run_id)
+    run = service.create_invoice(run.run_id)
+    run = service.send_invoice(run.run_id)
+    run = service.simulate_payment(run.run_id)
+
+    stored_invoice = next(
+        item
+        for item in run.invoices
+        if item.invoice_id == run.plan.milestones[0].invoice_id
+    )
+    assert stored_invoice.status == "PAID"
 
 
 def test_full_demo_flow_creates_audited_passport():
@@ -190,6 +225,28 @@ def test_http_fx_provider_falls_back_on_failure():
 
     assert snapshot.mode == "DEMO_FIXTURE"
     assert "fallback" in snapshot.source.lower()
+
+
+def test_fx_snapshot_rejects_nonpositive_rate_and_invalid_currency():
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValueError):
+        FxSnapshot(
+            base_currency="USD",
+            quote_currency="EUR",
+            rate=Decimal("0"),
+            source="invalid",
+            observed_at=now,
+        )
+    with pytest.raises(ValueError):
+        FxSnapshot(
+            base_currency="INVALID",
+            quote_currency="USD",
+            rate=Decimal("1"),
+            source="invalid",
+            observed_at=now,
+        )
 
 
 def test_refresh_payment_advances_only_when_paypal_reports_paid():

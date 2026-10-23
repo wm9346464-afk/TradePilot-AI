@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Literal, Protocol
 
 import requests
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .currency import normalize_currency_code
 from .money import Money
@@ -18,11 +18,16 @@ class FxSnapshot(BaseModel):
 
     base_currency: str
     quote_currency: str
-    rate: Decimal
+    rate: Decimal = Field(gt=0)
     source: str
     observed_at: datetime
     expires_at: datetime | None = None
     mode: Literal["LIVE", "DEMO_FIXTURE"] = "DEMO_FIXTURE"
+
+    @field_validator("base_currency", "quote_currency")
+    @classmethod
+    def normalize_currency(cls, value: str) -> str:
+        return normalize_currency_code(value)
 
     def is_valid(self, now: datetime | None = None) -> bool:
         current = now or datetime.now(timezone.utc)

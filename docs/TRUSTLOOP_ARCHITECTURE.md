@@ -45,6 +45,9 @@ TrustLoopService
 - Demo, Replay and Live Sandbox modes must be visibly distinct.
 - Only PayPal `PAID` status can unlock the next milestone.
 - Verified Webhook events trigger an authoritative PayPal re-query before state changes.
+- PAID amounts and currencies must exactly match the human-approved milestone.
+- Interrupted payment/progression states are resumable without optimistic success.
+- Replay Bundles load read-only and cannot overwrite the live run store.
 - Passport exports can be issuer-signed with HMAC-SHA256 when a signing key is configured.
 - Trust Passport is an audit artifact, not a legal opinion, credit rating or payment guarantee.
 

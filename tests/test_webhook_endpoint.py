@@ -70,6 +70,21 @@ def test_verified_webhook_requeries_paypal_and_unlocks_next_stage(tmp_path):
     assert repeated.processed is False
 
 
+def test_webhook_resumes_a_milestone_completed_before_unlock(tmp_path):
+    service, run, invoice_id = _awaiting_payment_run(tmp_path, name="recover-webhook.db")
+    service.paypal_gateway.simulate_payment(invoice_id)
+    service.refresh_payment(run.run_id)
+    service.complete_milestone(run.run_id)
+
+    result = process_verified_paypal_event(_paid_event(invoice_id), service)
+    current = service.get_run(run.run_id)
+
+    assert result.status == "processed"
+    assert result.processed is True
+    assert current.state == DealState.AWAITING_APPROVAL
+    assert current.plan.milestones[1].status.value == "READY"
+
+
 def test_invoice_index_resumes_a_webhook_target_in_a_new_service(tmp_path):
     service, run, invoice_id = _awaiting_payment_run(tmp_path)
     resumed = build_runtime_service(
@@ -133,6 +148,39 @@ def test_http_endpoint_health_does_not_require_webhook_secrets():
             payload = json.loads(response.read().decode("utf-8"))
         assert payload["status"] == "ok"
         assert payload["service"] == "tradepilot-trustloop-webhook"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_http_endpoint_returns_structured_error_when_service_init_fails():
+    def fail_factory():
+        raise RuntimeError("database unavailable")
+
+    server = build_server(
+        host="127.0.0.1",
+        port=0,
+        verifier=FakeVerifier(),
+        service_factory=fail_factory,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps(_paid_event("FAKE-INV-1")).encode("utf-8")
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}/paypal/webhook",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=5):
+            raise AssertionError("service initialization failure should return HTTP 500")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 500
+        payload = json.loads(exc.read().decode("utf-8"))
+        assert payload["error"] == "service_initialization_failed"
+        assert payload["error_type"] == "RuntimeError"
     finally:
         server.shutdown()
         server.server_close()

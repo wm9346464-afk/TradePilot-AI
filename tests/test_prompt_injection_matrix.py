@@ -1,6 +1,7 @@
 """Adversarial tests for untrusted contracts and constrained agent output."""
 
 import hashlib
+from decimal import Decimal
 
 import pytest
 
@@ -118,3 +119,41 @@ def test_prompt_injection_in_contract_remains_untrusted_text():
         "create_invoice",
         "send_invoice",
     ]
+
+
+def test_agent_block_decision_cannot_enter_human_approval():
+    class BlockingPlanner:
+        def propose(self, run, **kwargs):
+            proposal = RuleBasedPlanner().propose(run, **kwargs)
+            return proposal.model_copy(update={"decision": "BLOCK"})
+
+    service, run = _risk_ready_service()
+    service.agent_planner = BlockingPlanner()
+
+    with pytest.raises(PolicyViolation, match="blocked the deal"):
+        service.propose_plan(run.run_id, invoice_currency="USD")
+
+
+def test_blocked_contract_risk_cannot_be_overridden_by_a_proceed_planner():
+    class ProceedPlanner:
+        def propose(self, run, **kwargs):
+            proposal = RuleBasedPlanner().propose(run, **kwargs)
+            return proposal.model_copy(update={"decision": "PROCEED"})
+
+    service, run = _risk_ready_service()
+    run.risk = run.risk.model_copy(update={"decision": "BLOCK"})
+    service._runs[run.run_id] = run
+    service.agent_planner = ProceedPlanner()
+
+    with pytest.raises(PolicyViolation, match="risk assessment blocks"):
+        service.propose_plan(run.run_id, invoice_currency="USD")
+
+
+def test_milestone_total_cannot_exceed_contract_value():
+    service = build_demo_service()
+    deal = demo_deal_input().model_copy(update={"contract_amount": Decimal("1000")})
+    run = service.start_case(deal)
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+
+    with pytest.raises(PolicyViolation, match="total exceeds"):
+        service.propose_plan(run.run_id, invoice_currency="USD")

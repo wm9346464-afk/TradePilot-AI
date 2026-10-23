@@ -25,6 +25,12 @@ def _query_value(name: str) -> str:
     return str(value or "").strip()
 
 
+def _open_deal_room_button() -> None:
+    if st.button("Open the Deal Room", use_container_width=True):
+        st.query_params.clear()
+        st.rerun()
+
+
 def _render_public_verification(passport_id: str) -> None:
     st.markdown(
         """
@@ -42,18 +48,35 @@ def _render_public_verification(passport_id: str) -> None:
 """,
         unsafe_allow_html=True,
     )
-    service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    try:
+        service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    except Exception:
+        st.error("The public verifier is unavailable. Its trusted store could not be opened.")
+        _open_deal_room_button()
+        return
     if service.store is None:
         st.error(
             "Public verification is unavailable because TRUSTLOOP_STORE_PATH is not configured."
         )
+        _open_deal_room_button()
         return
-    run = service.find_run_by_passport(passport_id)
+    try:
+        run = service.find_run_by_passport(passport_id)
+    except Exception:
+        st.error("The stored Passport or audit chain could not be verified safely.")
+        _open_deal_room_button()
+        return
     if run is None or run.passport is None:
         st.error("Passport not found in this verifier's trusted store.")
+        _open_deal_room_button()
         return
 
-    verification = service.verify_trust_passport(run.run_id)
+    try:
+        verification = service.verify_trust_passport(run.run_id)
+    except Exception:
+        st.error("The stored Passport or audit chain could not be verified safely.")
+        _open_deal_room_button()
+        return
     passport = run.passport
     if verification.valid:
         st.success("VALID: the stored Passport and complete audit chain agree.")
@@ -104,9 +127,7 @@ def _render_public_verification(passport_id: str) -> None:
         mime="application/json",
         use_container_width=True,
     )
-    if st.button("Open the Deal Room", use_container_width=True):
-        st.query_params.clear()
-        st.rerun()
+    _open_deal_room_button()
 
 
 def _load_linked_run(run_id: str):
@@ -184,6 +205,7 @@ if linked_run_id and "trustloop_run" not in st.session_state:
         st.session_state["trustloop_run"] = linked_run
         st.session_state["trustloop_events"] = linked_events
         st.session_state.pop("trustloop_negotiation", None)
+        st.session_state["trustloop_replay"] = False
 
 with st.sidebar:
     st.markdown(f"### {tx('demo_controls')}")
@@ -191,7 +213,13 @@ with st.sidebar:
     if not os.getenv("TRUSTLOOP_STORE_PATH", "").strip():
         st.caption(tx("store_required"))
     if st.button(tx("reset"), use_container_width=True):
-        for key in ("trustloop_service", "trustloop_run", "trustloop_events", "trustloop_negotiation"):
+        for key in (
+            "trustloop_service",
+            "trustloop_run",
+            "trustloop_events",
+            "trustloop_negotiation",
+            "trustloop_replay",
+        ):
             st.session_state.pop(key, None)
         st.query_params.clear()
         st.rerun()
@@ -213,6 +241,7 @@ with st.sidebar:
                 st.session_state["trustloop_run"] = saved_run
                 st.session_state["trustloop_events"] = saved_events
                 st.session_state.pop("trustloop_negotiation", None)
+                st.session_state["trustloop_replay"] = False
                 st.query_params["run_id"] = saved_run.run_id
                 st.rerun()
     passport_lookup_id = st.text_input(
@@ -243,6 +272,7 @@ with st.sidebar:
                 st.session_state["trustloop_run"] = replay_run
                 st.session_state["trustloop_events"] = replay_service.get_audit_events(replay_run.run_id)
                 st.session_state.pop("trustloop_negotiation", None)
+                st.session_state["trustloop_replay"] = True
                 st.rerun()
         except Exception as exc:
             st.error(f"Replay bundle rejected: {type(exc).__name__}: {exc}")
@@ -334,6 +364,8 @@ backend_badge = (
     if configured_backend == "REST"
     else '<span class="tp-badge tp-demo">DEMO / FAKE PAYPAL</span>'
 )
+if st.session_state.get("trustloop_replay", False):
+    backend_badge = '<span class="tp-badge tp-live">REPLAY / READ-ONLY</span>'
 st.markdown(
     backend_badge
     + (
@@ -390,6 +422,7 @@ if run_demo:
         st.session_state["trustloop_run"] = run
         st.session_state["trustloop_events"] = events
         st.session_state.pop("trustloop_negotiation", None)
+        st.session_state["trustloop_replay"] = False
         st.query_params["run_id"] = run.run_id
 
 run = st.session_state.get("trustloop_run")
@@ -440,6 +473,8 @@ elif run.state == DealState.AWAITING_PAYMENT:
         if backend_name != "FAKE"
         else tx("next_fake")
     )
+elif run.state in {DealState.PAYMENT_CONFIRMED, DealState.MILESTONE_COMPLETED}:
+    next_action = tx("next_finalize")
 elif run.state == DealState.PASSPORT_ISSUED:
     next_action = tx("next_complete")
 else:
@@ -484,12 +519,31 @@ if run.state == DealState.AWAITING_APPROVAL and run.plan and service:
                         run = _complete_after_payment(service, run)
             except Exception as exc:
                 st.error(tx("stage_error", error=f"{type(exc).__name__}: {exc}"))
-                st.session_state["trustloop_run"] = service.get_run(run.run_id)
+                st.session_state["trustloop_run"] = service.reload_run(run.run_id)
                 st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
             else:
                 st.session_state["trustloop_run"] = run
                 st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
                 st.rerun()
+
+if run.state in {
+    DealState.PAYMENT_CONFIRMED,
+    DealState.MILESTONE_COMPLETED,
+} and service:
+    st.warning(tx("next_finalize"))
+    if st.button(tx("resume_progression"), type="primary", use_container_width=True):
+        try:
+            rate_limiter["status"].check("resume_progression")
+            with st.spinner(tx("progression_spinner")):
+                run = service.advance_after_payment(run.run_id)
+        except Exception as exc:
+            st.error(tx("progression_error", error=f"{type(exc).__name__}: {exc}"))
+            st.session_state["trustloop_run"] = service.reload_run(run.run_id)
+            st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+        else:
+            st.session_state["trustloop_run"] = run
+            st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+            st.rerun()
 
 if run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED} and service:
     st.warning(tx("resume_warning"))
@@ -503,7 +557,7 @@ if run.state in {DealState.INVOICE_CREATING, DealState.INVOICE_CREATED} and serv
                     run = _complete_after_payment(service, run)
         except Exception as exc:
             st.error(tx("resume_error", error=f"{type(exc).__name__}: {exc}"))
-            st.session_state["trustloop_run"] = service.get_run(run.run_id)
+            st.session_state["trustloop_run"] = service.reload_run(run.run_id)
             st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
         else:
             st.session_state["trustloop_run"] = run
@@ -537,8 +591,32 @@ if run.state == DealState.AWAITING_PAYMENT and run.plan and service:
             </div>""",
             unsafe_allow_html=True,
         )
-        if current_invoice and current_invoice.payment_url:
+        if (
+            backend_name != "FAKE"
+            and current_invoice
+            and current_invoice.payment_url
+        ):
             st.markdown(f"[{tx('open_payment')}]({current_invoice.payment_url})")
+        elif backend_name == "FAKE":
+            st.caption(tx("demo_payment_link"))
+        if backend_name == "FAKE" and st.button(
+            tx("simulate_demo_payment"),
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                rate_limiter["financial"].check("simulate_resumed_payment")
+                with st.spinner(tx("simulating_demo_payment")):
+                    run = service.simulate_payment(run.run_id)
+                    run = service.advance_after_payment(run.run_id)
+            except Exception as exc:
+                st.error(tx("simulate_error", error=f"{type(exc).__name__}: {exc}"))
+                st.session_state["trustloop_run"] = service.reload_run(run.run_id)
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+            else:
+                st.session_state["trustloop_run"] = run
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
+                st.rerun()
         if st.button(tx("refresh_payment"), type="primary", use_container_width=True):
             try:
                 rate_limiter["status"].check("refresh_status")
@@ -548,7 +626,7 @@ if run.state == DealState.AWAITING_PAYMENT and run.plan and service:
                         run = _complete_after_payment(service, run)
             except Exception as exc:
                 st.error(tx("status_error", error=f"{type(exc).__name__}: {exc}"))
-                st.session_state["trustloop_run"] = service.get_run(run.run_id)
+                st.session_state["trustloop_run"] = service.reload_run(run.run_id)
                 st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
             else:
                 st.session_state["trustloop_run"] = run
@@ -630,6 +708,10 @@ with center:
                 st.rerun()
             except RateLimitExceeded as exc:
                 st.error(str(exc))
+            except Exception as exc:
+                st.error(tx("negotiation_error", error=f"{type(exc).__name__}: {exc}"))
+                st.session_state["trustloop_run"] = service.reload_run(run.run_id)
+                st.session_state["trustloop_events"] = service.get_audit_events(run.run_id)
         negotiation = st.session_state.get("trustloop_negotiation")
         if negotiation is None and service:
             negotiation = service.get_negotiation(run.run_id)

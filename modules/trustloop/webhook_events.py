@@ -47,13 +47,12 @@ def process_verified_paypal_event(event: dict, service) -> WebhookProcessResult:
             False,
             "Invoice does not belong to a stored TrustLoop run",
         )
-    if run.state != DealState.AWAITING_PAYMENT:
-        if run.state in {
-            DealState.PAYMENT_CONFIRMED,
-            DealState.MILESTONE_COMPLETED,
-            DealState.AWAITING_APPROVAL,
-            DealState.PASSPORT_ISSUED,
-        }:
+    if run.state not in {
+        DealState.AWAITING_PAYMENT,
+        DealState.PAYMENT_CONFIRMED,
+        DealState.MILESTONE_COMPLETED,
+    }:
+        if run.state in {DealState.AWAITING_APPROVAL, DealState.PASSPORT_ISSUED}:
             return WebhookProcessResult(
                 "already_processed",
                 False,
@@ -69,15 +68,17 @@ def process_verified_paypal_event(event: dict, service) -> WebhookProcessResult:
             run.state.value,
         )
 
-    refreshed = service.refresh_payment(run.run_id)
-    if refreshed.state != DealState.PAYMENT_CONFIRMED:
-        return WebhookProcessResult(
-            "payment_pending",
-            False,
-            "PayPal has not yet confirmed PAID status",
-            refreshed.run_id,
-            refreshed.state.value,
-        )
+    refreshed = run
+    if run.state == DealState.AWAITING_PAYMENT:
+        refreshed = service.refresh_payment(run.run_id)
+        if refreshed.state != DealState.PAYMENT_CONFIRMED:
+            return WebhookProcessResult(
+                "payment_pending",
+                False,
+                "PayPal has not yet confirmed PAID status",
+                refreshed.run_id,
+                refreshed.state.value,
+            )
 
     advanced = service.advance_after_payment(refreshed.run_id)
     return WebhookProcessResult(

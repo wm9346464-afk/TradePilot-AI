@@ -19,6 +19,11 @@ def test_signed_passport_verifies_and_detects_tampering():
     result = service.verify_trust_passport(run.run_id)
     assert result.valid is True
     assert result.checks["issuer_signature_valid"] is True
+    assert result.checks["contract_hash_matches"] is True
+    assert result.checks["passport_issue_event_matches"] is True
+    assert result.checks["settlement_invoices_match"] is True
+    assert result.checks["approvals_match_audit"] is True
+    assert result.checks["settlements_match_audit"] is True
 
     tampered = run.passport.model_copy(
         update={"contract_hash": "0" * 64}

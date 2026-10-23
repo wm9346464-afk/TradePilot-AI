@@ -29,6 +29,9 @@
 - 配置 `TRUSTLOOP_STORE_PATH` 后，运行快照、审批、发票索引和审计链会写入本地 SQLite；未配置时只保存在当前 session。
 - 可选的 `APP_PASSWORD` 只提供轻量访问门槛，不替代企业身份认证和访问控制。
 - Webhook 端点会先调用 PayPal 官方验签接口，再重新查询发票状态，不直接信任回调 body。
+- PayPal 返回的 `PAID` 金额与币种必须和人工批准的里程碑完全一致，否则拒绝推进。
+- 所有里程碑均为 `PAID` 后才允许签发 Trust Passport。
+- Replay Bundle 只读加载，不会回写或覆盖线上运行数据库。
 - 配置 `TRUSTLOOP_PASSPORT_SIGNING_KEY` 后，Passport 使用 HMAC-SHA256 做发行方签名；验证时必须使用同一服务端密钥。
 - 生产环境仍需补充企业身份认证、授权、分布式速率限制、集中式日志、密钥托管和持久化备份。
 

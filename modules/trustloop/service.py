@@ -14,7 +14,7 @@ from .agent.tools import ToolRegistry, build_default_tool_registry
 from .agent.negotiation import NegotiationResult, negotiate
 from .audit import AuditEvent, AuditLog
 from .currency import CurrencyPolicy
-from .enums import DealState, MilestoneStatus, RunMode
+from .enums import DealState, MilestoneStatus, RiskDecision, RunMode
 from .fx import build_fx_provider
 from .models import (
     ActionPlan,
@@ -156,6 +156,8 @@ class TrustLoopService:
         deposit_amount: Decimal | int | str | None = None,
     ) -> DealRun:
         run = self._require_run(run_id, DealState.RISK_ASSESSED)
+        if run.risk and run.risk.decision == RiskDecision.BLOCK:
+            raise PolicyViolation("Contract risk assessment blocks financial execution")
         resolved_sample_amount = (
             sample_amount
             if sample_amount is not None
@@ -352,6 +354,8 @@ class TrustLoopService:
         invoice = self.paypal_gateway.create_invoice(request)
         if not invoice.success:
             raise PolicyViolation(invoice.error_message or "Invoice creation failed")
+        if not invoice.invoice_id:
+            raise PolicyViolation("Invoice creation returned no invoice ID")
 
         milestone.status = MilestoneStatus.INVOICE_DRAFT
         milestone.invoice_id = invoice.invoice_id
@@ -385,10 +389,18 @@ class TrustLoopService:
         invoice = self.paypal_gateway.send_invoice(milestone.invoice_id)
         if not invoice.success:
             raise PolicyViolation(invoice.error_message or "Invoice send failed")
+        updated_invoices = list(run.invoices)
+        for index, item in enumerate(updated_invoices):
+            if item.invoice_id == milestone.invoice_id:
+                updated_invoices[index] = invoice
+                break
+        else:
+            updated_invoices.append(invoice)
         milestone.status = MilestoneStatus.AWAITING_PAYMENT
         milestone.history.append(
             StatusEvent(label="INVOICE_SENT", detail=invoice.status or "")
         )
+        run = run.model_copy(update={"invoices": updated_invoices})
         run = self.state_machine.transition(run, "INVOICE_SENT")
         self._audit(
             run_id,
@@ -416,11 +428,23 @@ class TrustLoopService:
         invoice = simulator(milestone.invoice_id)
         if not invoice.success or invoice.status != "PAID":
             raise PolicyViolation(invoice.error_message or "Simulated payment failed")
+        if invoice.amount is None or invoice.amount != milestone.amount:
+            raise PolicyViolation(
+                "Simulated PAID amount or currency does not match the approved milestone"
+            )
         milestone.status = MilestoneStatus.PAID
         milestone.payment_id = invoice.transaction_id
         milestone.history.append(
             StatusEvent(label="PAID", detail=invoice.transaction_id or "")
         )
+        updated_invoices = list(run.invoices)
+        for index, item in enumerate(updated_invoices):
+            if item.invoice_id == milestone.invoice_id:
+                updated_invoices[index] = invoice
+                break
+        else:
+            updated_invoices.append(invoice)
+        run = run.model_copy(update={"invoices": updated_invoices})
         run = self.state_machine.transition(run, "PAYMENT_CONFIRMED")
         self._audit(
             run_id,
@@ -453,6 +477,12 @@ class TrustLoopService:
         if not invoice.success:
             raise PolicyViolation(
                 invoice.error_message or "PayPal payment status lookup failed"
+            )
+        if invoice.status == "PAID" and (
+            invoice.amount is None or invoice.amount != milestone.amount
+        ):
+            raise PolicyViolation(
+                "PayPal PAID amount or currency does not match the approved milestone"
             )
 
         updated_invoices = list(run.invoices)
@@ -533,17 +563,16 @@ class TrustLoopService:
     def advance_after_payment(self, run_id: str) -> DealRun:
         """Complete a verified payment and unlock or issue the next evidence step."""
         run = self.get_run(run_id)
-        if run.state in {
-            DealState.MILESTONE_COMPLETED,
-            DealState.AWAITING_APPROVAL,
-            DealState.PASSPORT_ISSUED,
-        }:
+        if run.state in {DealState.AWAITING_APPROVAL, DealState.PASSPORT_ISSUED}:
             return run
-        if run.state != DealState.PAYMENT_CONFIRMED:
+        if run.state == DealState.PAYMENT_CONFIRMED:
+            run = self.complete_milestone(run_id)
+        elif run.state != DealState.MILESTONE_COMPLETED:
             raise PolicyViolation(
-                f"Run {run_id} is in {run.state.value}, expected PAYMENT_CONFIRMED"
+                f"Run {run_id} is in {run.state.value}; verified payment progression "
+                "is not available"
             )
-        run = self.complete_milestone(run_id)
+        run = self.get_run(run_id)
         if run.plan and any(
             item.status != MilestoneStatus.PAID for item in run.plan.milestones
         ):
@@ -584,6 +613,11 @@ class TrustLoopService:
         run = self._require_run(run_id, DealState.MILESTONE_COMPLETED)
         if not run.risk or not run.plan:
             raise PolicyViolation("Risk assessment and plan are required for a passport")
+        if any(
+            milestone.status != MilestoneStatus.PAID
+            for milestone in run.plan.milestones
+        ):
+            raise PolicyViolation("All milestones must be PAID before issuing a passport")
         settlements = []
         for milestone in run.plan.milestones:
             if milestone.invoice_id and milestone.status == MilestoneStatus.PAID:
@@ -681,9 +715,6 @@ class TrustLoopService:
         audit = AuditLog.from_events(parsed.run.run_id, parsed.events)
         self._runs[parsed.run.run_id] = parsed.run
         self._audits[parsed.run.run_id] = audit
-        if self.store:
-            self.store.save_run(parsed.run)
-            self.store.replace_audit_events(parsed.run.run_id, parsed.events)
         self._restore_gateway_state(parsed.run)
         return parsed.run
 
@@ -740,6 +771,15 @@ class TrustLoopService:
     def get_run(self, run_id: str) -> DealRun:
         self._hydrate_run(run_id)
         return self._runs[run_id]
+
+    def reload_run(self, run_id: str) -> DealRun:
+        """Discard cached state and load the latest persisted run."""
+        if self.store is None:
+            return self.get_run(run_id)
+        self._runs.pop(run_id, None)
+        self._audits.pop(run_id, None)
+        self._negotiations.pop(run_id, None)
+        return self.get_run(run_id)
 
     def get_audit_events(self, run_id: str) -> list[AuditEvent]:
         self._hydrate_run(run_id)

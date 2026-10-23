@@ -67,8 +67,19 @@ class PolicyEngine:
             raise PolicyViolation("Milestone sequence must be contiguous and start at 1")
         for milestone in plan.milestones:
             self.validate_milestone(milestone)
+        total_usd = sum(
+            (self._usd_value(milestone.amount) for milestone in plan.milestones),
+            Decimal("0"),
+        )
+        contract_usd = self._usd_value(plan.settlement_plan.contract_money)
+        if total_usd > contract_usd:
+            raise PolicyViolation(
+                "Trust Ladder total exceeds the contract value"
+            )
 
     def validate_agent_proposal(self, proposal: AgentProposal) -> None:
+        if proposal.decision == "BLOCK":
+            raise PolicyViolation("Agent blocked the deal; financial execution is disabled")
         if not proposal.recommended_ladder:
             raise PolicyViolation("Agent proposal must include at least one milestone")
         if len(proposal.recommended_ladder) > self.config.max_milestones:

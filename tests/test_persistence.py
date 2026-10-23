@@ -1,5 +1,7 @@
 """SQLite persistence and cross-service resume tests."""
 
+import copy
+
 import pytest
 
 from modules.trustloop.audit import AuditEvent
@@ -110,3 +112,49 @@ def test_fake_paypal_invoice_state_is_rehydrated_after_restart(tmp_path):
 
     assert resumed.plan.milestones[0].invoice_id == invoice_id
     assert resumed.plan.milestones[0].status.value == "PAID"
+
+
+def test_stale_session_cannot_overwrite_a_newer_payment_state(tmp_path):
+    database = tmp_path / "stale-session.db"
+    seed = _service(database)
+    run = seed.start_case(demo_deal_input())
+    run = seed.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = seed.propose_plan(run.run_id)
+    run = seed.approve_plan(run.run_id)
+    run = seed.create_invoice(run.run_id)
+    run = seed.send_invoice(run.run_id)
+
+    first = _service(database)
+    stale = _service(database)
+    first_run = first.get_run(run.run_id)
+    stale.get_run(run.run_id)
+    first.paypal_gateway.simulate_payment(first_run.plan.milestones[0].invoice_id)
+    first.refresh_payment(run.run_id)
+    first.advance_after_payment(run.run_id)
+
+    with pytest.raises(StoreConflict):
+        stale.refresh_payment(run.run_id)
+
+    latest = stale.reload_run(run.run_id)
+    assert latest.state == DealState.AWAITING_APPROVAL
+    assert latest.plan.milestones[0].status.value == "PAID"
+    persisted = _service(database).get_run(run.run_id)
+    assert persisted.state == DealState.AWAITING_APPROVAL
+
+
+def test_replay_bundle_is_read_only_and_cannot_overwrite_live_store(tmp_path):
+    database = tmp_path / "replay-safe.db"
+    service = _service(database)
+    run = service.run_full_demo(demo_deal_input())
+    bundle = service.export_run_bundle(run.run_id)
+    tampered_bundle = copy.deepcopy(bundle)
+    tampered_bundle["run"]["deal"]["product_name"] = "TAMPERED REPLAY PRODUCT"
+
+    replay_service = _service(database)
+    replay_service.restore_run_bundle(tampered_bundle)
+
+    persisted = _service(database).get_run(run.run_id)
+    assert persisted.deal.product_name == "HRB400E rebar"
