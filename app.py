@@ -31,6 +31,7 @@ from modules.market_signal import (
     get_all_signals,
     get_price_chart_data,
     get_provider_info,
+    get_triggered_signals,
 )
 from modules.contract_checker import check_contract, SAMPLE_CONTRACT, is_ai_configured
 from modules.paypal_payment import (
@@ -66,6 +67,53 @@ def _t(key: str, **kwargs) -> str:
 
 
 # ============================================================
+# 信号字段兼容小工具
+# ============================================================
+# 各 SignalProvider 只保证 direction/triggered/z/confidence 这些字段，
+# 没有 signal/conf_* 这类历史字段，展示层必须自己归一，否则会显示 N/A。
+
+_CONF_KEYS = {
+    "高": "common.high", "中": "common.medium", "低": "common.low",
+    "High": "common.high", "Medium": "common.medium", "Low": "common.low",
+}
+_CONF_COLORS = {"高": "#d9364c", "中": "#f5a623", "低": "#009c48"}
+
+
+def _conf_label(value) -> str:
+    """把高/中/低（或 High/Medium/Low）归一为当前语言标签。"""
+    conf = str(value or "").strip()
+    key = _CONF_KEYS.get(conf)
+    return _t(key) if key else (conf or _t("common.unknown"))
+
+
+def _conf_color(value) -> str:
+    return _CONF_COLORS.get(str(value or "").strip(), "#6c7378")
+
+
+def _pricing_hint(sig) -> str:
+    """把价差信号翻成报价/付款建议。
+
+    信号语义是价差向均值回归，不是价格涨跌预测：
+    z>0（价差偏高，预期回落）→ spread_high；z<0（价差偏低，预期修复）→ spread_low。
+    """
+    if not isinstance(sig, dict) or not sig.get("triggered"):
+        return "neutral"
+    z = sig.get("z")
+    if not isinstance(z, (int, float)) or not np.isfinite(z):
+        return "neutral"
+    return "spread_high" if z > 0 else "spread_low"
+
+
+def _pricing_hint_text(sig) -> str:
+    hint = _pricing_hint(sig)
+    if hint == "spread_high":
+        return _t("paypal.pricing_spread_high")
+    if hint == "spread_low":
+        return _t("paypal.pricing_spread_low")
+    return _t("paypal.pricing_neutral")
+
+
+# ============================================================
 # Contract review shortcut callbacks
 # ============================================================
 
@@ -77,6 +125,26 @@ def _load_sample_contract():
 def _clear_contract():
     '''Clear the contract input for the review page.'''
     st.session_state['contract_text'] = ''
+
+
+def _load_onboarding_sample_contract():
+    """Load the sample contract into the onboarding text area safely."""
+    st.session_state["ob_contract_input"] = SAMPLE_CONTRACT
+    st.session_state["onboarding_contract_reviewed"] = False
+    st.session_state.pop("ob_contract_result", None)
+
+
+def _clear_onboarding_contract():
+    """Clear the onboarding text area and invalidate any prior review."""
+    st.session_state["ob_contract_input"] = ""
+    st.session_state["onboarding_contract_reviewed"] = False
+    st.session_state.pop("ob_contract_result", None)
+
+
+def _invalidate_onboarding_review():
+    """Require a fresh review whenever the onboarding contract changes."""
+    st.session_state["onboarding_contract_reviewed"] = False
+    st.session_state.pop("ob_contract_result", None)
 
 
 # ============================================================
@@ -95,6 +163,26 @@ st.set_page_config(
 def _cached_get_all_signals(lang: str = "zh"):
     """Cache remote/demo signals to avoid hitting remote API on every rerun."""
     return get_all_signals(lang=lang)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_triggered_signals(lang: str = "zh"):
+    """演示开关打开时使用：回看最近一次真实触发日的信号快照。"""
+    return get_triggered_signals(lang=lang)
+
+
+DEMO_SCENARIO_KEY = "demo_triggered_scenario"
+
+
+def _current_signal_bundle(lang: str) -> dict:
+    """全站唯一的信号入口。
+
+    演示开关（侧边栏）打开时，返回演示数据里最近一次真实触发日的快照，
+    让评委能看到触发态的信号卡片与联动建议；关闭时返回最新一日。
+    """
+    if st.session_state.get(DEMO_SCENARIO_KEY):
+        return _cached_get_triggered_signals(lang=lang)
+    return _cached_get_all_signals(lang=lang)
 
 # Custom CSS styles - PayPal Design System
 st.markdown("""
@@ -366,6 +454,13 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    st.checkbox(
+        _t("sidebar.demo_scenario"),
+        key=DEMO_SCENARIO_KEY,
+        help=_t("sidebar.demo_scenario_help"),
+    )
+
+    st.markdown("---")
     st.markdown(f"### {_t('sidebar.about')}")
     st.markdown(_t("sidebar.about_line1"))
     st.markdown(_t("sidebar.about_line2"))
@@ -501,35 +596,25 @@ elif page == _t("sidebar.page_onboarding"):
 
         # Show market signal
         st.markdown(f"#### {_t('onboarding.market_signal')}")
-        signal_bundle = _cached_get_all_signals(lang=lang)
+        signal_bundle = _current_signal_bundle(lang)
         signals = signal_bundle.get("signals", {})
         if signals:
-            first_key = list(signals.keys())[0]
-            sig = signals[first_key]
-            conf = sig.get("confidence", "medium")
-            conf_color = {"high": "#d9364c", "medium": "#f5a623", "low": "#009c48"}.get(conf, "#6c7378")
+            sig = next(iter(signals.values()))
+            sig_name = html.escape(str(sig.get("zh") or ""))
+            sig_direction = html.escape(str(sig.get("direction") or _t("common.unknown")))
             st.markdown(f"""
             <div class='metric-box'>
-                <h3 style='color:{conf_color};'>{sig.get('signal','N/A')}</h3>
-                <p>{first_key} | {_t(f'market.conf_{conf}') if conf in ['high','medium','low'] else conf}</p>
+                <h3 style='color:{_conf_color(sig.get("confidence"))};'>{sig_direction}</h3>
+                <p>{sig_name} | {html.escape(_conf_label(sig.get("confidence")))}</p>
             </div>
             """, unsafe_allow_html=True)
 
         # Pricing suggestion based on signal
         st.markdown(f"#### {_t('onboarding.pricing_suggestion')}")
         if signals:
-            first_key = list(signals.keys())[0]
-            sig = signals[first_key]
-            signal_text = sig.get("signal", "").lower()
-            if "多" in signal_text or "bull" in signal_text or "涨" in signal_text:
-                suggestion = "当前行情偏多，建议尽快锁定价格，可适当提高报价" if lang == "zh" else "Market is bullish, recommend locking price soon, can slightly raise offer"
-            elif "空" in signal_text or "bear" in signal_text or "跌" in signal_text:
-                suggestion = "当前行情偏空，建议保守报价，预留降价空间" if lang == "zh" else "Market is bearish, recommend conservative pricing, reserve room for price cuts"
-            else:
-                suggestion = "当前行情震荡，建议按市场价报价，保持灵活" if lang == "zh" else "Market is range-bound, recommend market-price offer, stay flexible"
-            st.info(suggestion)
+            st.info(_pricing_hint_text(next(iter(signals.values()))))
         else:
-            st.info("按市场价报价" if lang == "zh" else "Price at market rate")
+            st.info(_t("paypal.pricing_neutral"))
 
         # Save data and next
         if st.button(_t("onboarding.next"), key="ob_next_1", type="primary"):
@@ -546,18 +631,24 @@ elif page == _t("sidebar.page_onboarding"):
 
         col_btn1, col_btn2 = st.columns([1, 4])
         with col_btn1:
-            if st.button(_t("onboarding.use_sample_contract"), key="ob_sample"):
-                st.session_state['ob_contract_text'] = SAMPLE_CONTRACT
+            st.button(
+                _t("onboarding.use_sample_contract"),
+                key="ob_sample",
+                on_click=_load_onboarding_sample_contract,
+            )
         with col_btn2:
-            if st.button(_t("onboarding.clear_contract"), key="ob_clear"):
-                st.session_state['ob_contract_text'] = ''
+            st.button(
+                _t("onboarding.clear_contract"),
+                key="ob_clear",
+                on_click=_clear_onboarding_contract,
+            )
 
         contract_text = st.text_area(
             _t("contract.input_label"),
-            value=st.session_state.get('ob_contract_text', ''),
             height=200,
             placeholder=_t("onboarding.contract_placeholder"),
-            key="ob_contract_input"
+            key="ob_contract_input",
+            on_change=_invalidate_onboarding_review,
         )
 
         if st.button(_t("contract.review_button"), key="ob_review", type="primary"):
@@ -577,7 +668,11 @@ elif page == _t("sidebar.page_onboarding"):
             if issues:
                 for issue in issues:
                     severity = issue.get("severity", "low")
-                    sev_color = {"high": "#d9364c", "medium": "#f5a623", "low": "#009c48"}.get(severity, "#6c7378")
+                    sev_color = {
+                        "高": "#d9364c", "High": "#d9364c", "high": "#d9364c",
+                        "中": "#f5a623", "Medium": "#f5a623", "medium": "#f5a623",
+                        "低": "#009c48", "Low": "#009c48", "low": "#009c48",
+                    }.get(severity, "#6c7378")
                     st.markdown(f"- <span style='color:{sev_color};font-weight:600;'>[{issue.get('type','')}]</span> {issue.get('description','')}", unsafe_allow_html=True)
             else:
                 st.success(_t("contract.no_issues"))
@@ -675,11 +770,18 @@ elif page == _t("sidebar.page_onboarding"):
 
         if st.button(_t("onboarding.generate_notifications"), key="ob_gen_notif", type="primary"):
             with st.spinner(_t("notification.generating")):
+                contract_id = ob_data.get(
+                    "contract_id",
+                    f"OB-{str(ob_data.get('customer_name', 'DEMO'))[:10]}",
+                )
                 notifications = generate_trade_workflow_notifications(
                     customer_name=ob_data.get("customer_name", "Demo Customer"),
-                    product=ob_data.get("product", "Iron Ore"),
-                    quantity=ob_data.get("quantity", 100),
+                    contract_id=contract_id,
+                    product_name=ob_data.get("product", "Iron Ore"),
+                    quantity=str(ob_data.get("quantity", 100)),
                     amount=ob_data.get("sample_amount", 500),
+                    currency="USD",
+                    company_name=ob_data.get("company_name", "TradePilot AI Trading Co., Ltd."),
                     lang=lang,
                 )
             st.session_state["ob_notifications"] = notifications
@@ -688,9 +790,19 @@ elif page == _t("sidebar.page_onboarding"):
         if st.session_state.get("onboarding_notifications_generated") and "ob_notifications" in st.session_state:
             notifications = st.session_state["ob_notifications"]
             st.success(f"{_t('notification.generated')} {len(notifications)}")
-            for i, notif in enumerate(notifications):
-                with st.expander(f"{notif.get('type','')} - {notif.get('title','')}"):
-                    st.markdown(notif.get("content", ""))
+            for i, notif in enumerate(notifications, 1):
+                with st.expander(
+                    f"{i}. {notif.get('type_name', '')} - {notif.get('subject', '')[:40]}"
+                ):
+                    st.markdown(
+                        f"**{_t('notification.subject_label')}**: {notif.get('subject', '')}"
+                    )
+                    st.text_area(
+                        f"{_t('notification.content_label')}_{i}",
+                        value=notif.get("body", ""),
+                        height=260,
+                        key=f"ob_notif_{i}",
+                    )
 
         st.markdown("---")
         col_prev, col_finish = st.columns([1, 4])
@@ -725,16 +837,20 @@ elif page == _t("sidebar.page_onboarding"):
             # Real trust score calculation
             contract_result = st.session_state.get("ob_contract_result", {})
             issues = contract_result.get("issues", [])
-            high_risk_count = sum(1 for i in issues if i.get("severity") == "高")
+            high_risk_count = sum(1 for i in issues if i.get("severity") in ("高", "High"))
             # Determine market volatility from signal
             market_vol = "medium"
             try:
-                sig_bundle = _cached_get_all_signals(lang=lang)
+                sig_bundle = _current_signal_bundle(lang)
                 sigs = sig_bundle.get("signals", {})
                 if sigs:
                     first_sig = list(sigs.values())[0]
-                    conf = first_sig.get("confidence", "medium")
-                    market_vol = {"high": "high", "medium": "medium", "low": "low"}.get(conf, "medium")
+                    conf = str(first_sig.get("confidence", "medium")).strip()
+                    market_vol = {
+                        "高": "high", "中": "medium", "低": "low",
+                        "High": "high", "Medium": "medium", "Low": "low",
+                        "high": "high", "medium": "medium", "low": "low",
+                    }.get(conf, "medium")
             except Exception:
                 pass
             trust_result = calculate_trust_score(
@@ -750,7 +866,8 @@ elif page == _t("sidebar.page_onboarding"):
             )
             trust_color = get_trust_level_color(trust_result.level)
             st.metric(_t("onboarding.trust_score"), f"{trust_result.total}/100")
-            st.markdown(f"<div style='text-align:center;color:{trust_color};font-weight:600;'>{trust_result.level}信任 / {trust_result.level_en if lang=='en' else trust_result.level}</div>", unsafe_allow_html=True)
+            level_text = trust_result.level_en if lang == "en" else f"{trust_result.level}信任"
+            st.markdown(f"<div style='text-align:center;color:{trust_color};font-weight:600;'>{level_text}</div>", unsafe_allow_html=True)
 
         # Trust score dimension breakdown
         st.markdown("---")
@@ -785,9 +902,17 @@ elif page == _t("sidebar.page_market"):
     st.title(_t("market.title"))
     st.markdown(_t("market.subtitle"))
 
-    signal_bundle = _cached_get_all_signals(lang=st.session_state.get("lang", "zh"))
+    signal_bundle = _current_signal_bundle(st.session_state.get("lang", "zh"))
     signals = signal_bundle.get("signals", {})
     provider_info = get_provider_info(signal_bundle, lang=st.session_state.get("lang", "zh"))
+
+    if signal_bundle.get("demo_scenario"):
+        st.info(
+            _t(
+                "market.scenario_note",
+                date=signal_bundle.get("scenario_date", _t("common.na")),
+            )
+        )
 
     if signal_bundle.get("degraded"):
         st.warning(
@@ -1046,18 +1171,14 @@ elif page == _t("sidebar.page_paypal"):
     # Market-linked payment strategy suggestion
     st.markdown(f"#### {_t('paypal.pricing_title')}")
     try:
-        signal_bundle_pp = _cached_get_all_signals(lang=st.session_state.get("lang", "zh"))
+        signal_bundle_pp = _current_signal_bundle(st.session_state.get("lang", "zh"))
         signals_pp = signal_bundle_pp.get("signals", {})
-        if signals_pp:
-            first_key_pp = list(signals_pp.keys())[0]
-            sig_pp = signals_pp[first_key_pp]
-            signal_text_pp = sig_pp.get("signal", "").lower()
-            if "多" in signal_text_pp or "bull" in signal_text_pp or "涨" in signal_text_pp:
-                st.info(_t("paypal.pricing_bull"))
-            elif "空" in signal_text_pp or "bear" in signal_text_pp or "跌" in signal_text_pp:
-                st.warning(_t("paypal.pricing_bear"))
-            else:
-                st.info(_t("paypal.pricing_neutral"))
+        sig_pp = next(iter(signals_pp.values()), None)
+        hint_pp = _pricing_hint(sig_pp)
+        if hint_pp == "spread_high":
+            st.warning(_t("paypal.pricing_spread_high"))
+        elif hint_pp == "spread_low":
+            st.info(_t("paypal.pricing_spread_low"))
         else:
             st.info(_t("paypal.pricing_neutral"))
     except Exception:
@@ -1268,7 +1389,11 @@ elif page == _t("sidebar.page_paypal"):
             st.markdown(_t("paypal.webhook_config_step1"))
             st.markdown(_t("paypal.webhook_config_step2"))
             st.markdown(_t("paypal.webhook_config_step3"))
-            st.info("modules/webhook_handler.py 已实现完整的签名验证和事件处理逻辑，生产环境部署为HTTP端点即可。" if st.session_state.get("lang", "zh") == "zh" else "modules/webhook_handler.py implements full signature verification and event handling. Deploy as an HTTP endpoint in production.")
+            st.info(
+                "当前页面展示的是模拟 Webhook 事件，用于演示付款后的自动动作；生产环境需要单独部署 HTTP 端点并完成 PayPal 官方验签。"
+                if st.session_state.get("lang", "zh") == "zh"
+                else "This page simulates webhook events for the demo. Production use requires a separate HTTP endpoint with PayPal webhook signature verification."
+            )
 
     with col_webhook2:
         if st.button(_t("paypal.webhook_simulate"), key="simulate_webhook", type="primary"):

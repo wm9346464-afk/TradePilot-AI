@@ -42,6 +42,20 @@ def get_all_signals(lang: str = "zh") -> dict:
     return _get_provider().get_all_signals(lang=lang)
 
 
+def get_triggered_signals(lang: str = "zh") -> dict:
+    """
+    演示用：回看最近一次"真实触发日"的信号快照（结构化结果同上）。
+
+    仅 DemoSignalProvider 支持历史回看；RemoteSignalProvider 没有历史序列，
+    此时退回它的最新信号，行为与 get_all_signals 一致。
+    """
+    provider = _get_provider()
+    getter = getattr(provider, "get_triggered_demo_bundle", None)
+    if callable(getter):
+        return getter(lang=lang)
+    return provider.get_all_signals(lang=lang)
+
+
 def get_price_chart_data() -> dict:
     """
     返回价格走势图表数据（最近180个数据点）

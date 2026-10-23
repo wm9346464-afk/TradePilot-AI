@@ -430,3 +430,26 @@ def test_notification_workflow_has_only_demo_language():
     shipping = next(item for item in notifications if item["type"] == "shipping_notice")
     assert "模拟链接" in payment["body"]
     assert "示例单号" in shipping["body"]
+
+
+def test_triggered_demo_scenario_replays_a_real_trigger_day():
+    """演示回看必须是数据里真实发生过触发的某一天，不是构造出来的信号。"""
+    provider = DemoSignalProvider()
+    latest = provider.get_all_signals(lang="zh")
+    scenario = provider.get_triggered_demo_bundle(lang="zh")
+
+    assert scenario["demo_scenario"] is True
+    assert scenario["scenario"] == "historical_trigger"
+    assert scenario["scenario_date"] == scenario["as_of"]
+    # 至少一个信号越过触发线
+    triggered = [k for k, sig in scenario["signals"].items() if sig["triggered"]]
+    assert triggered, "回看快照里没有任何触发的信号"
+    # 触发与 z 值口径一致（|z| >= 1.2）
+    for key in triggered:
+        assert abs(float(scenario["signals"][key]["z"])) >= 1.2
+    # 回看日不晚于最新一日，且两种语言回看同一天
+    assert scenario["scenario_date"] <= latest["as_of"]
+    assert provider.get_triggered_demo_bundle(lang="en")["scenario_date"] == scenario["scenario_date"]
+    # 触发日不应等于最新日（当前数据最后一天恰好未触发），否则说明回看没生效
+    assert scenario["scenario_date"] != latest["as_of"]
+

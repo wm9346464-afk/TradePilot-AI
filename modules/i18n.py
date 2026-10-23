@@ -34,6 +34,8 @@ TRANSLATIONS = {
         "sidebar.about": "关于",
         "sidebar.about_line1": "PayPal AI Hackathon 2026 参赛项目",
         "sidebar.about_line2": "用AI+PayPal解决大宗商品贸易新客户信任问题",
+        "sidebar.demo_scenario": "演示：查看一次历史触发信号",
+        "sidebar.demo_scenario_help": "演示用。切换后全站信号回看演示数据里最近一次真实触发的那一天（同一套计算口径重算，非构造数据），便于展示信号触发时的界面与建议。",
 
         # --- Config Status ---
         "config.not_configured": "未配置（Demo模式）",
@@ -135,6 +137,7 @@ TRANSLATIONS = {
         "market.subtitle": "黑色系大宗商品市场观察与价差分析",
         "market.degraded_warning": "远程信号已降级为Demo模式：",
         "market.demo_warning": "⚠️ 当前为演示模式，使用合成数据展示系统功能。信号仅供演示，不构成投资建议。",
+        "market.scenario_note": "演示回看：以下信号为合成演示数据中 {date} 真实发生触发的那一天（同一套计算口径重算，非构造数据）。",
         "market.source_label": "信号来源：",
         "market.chart_source_label": "图表来源：",
         "market.as_of_label": "数据截止：",
@@ -225,6 +228,8 @@ TRANSLATIONS = {
         "paypal.pricing_bull": "当前行情偏多（看涨），建议尽快付款锁定价格，可考虑全款支付以锁定当前低价。",
         "paypal.pricing_bear": "当前行情偏空（看跌），建议保守付款，可考虑分期付款或货到付款，避免价格下跌风险。",
         "paypal.pricing_neutral": "当前行情震荡，建议按常规付款方式，保持灵活，可约定价格调整条款。",
+        "paypal.pricing_spread_high": "价差处于高位、预期向下回归，建议按市场价报价并预留议价空间，付款节奏不必抢。",
+        "paypal.pricing_spread_low": "价差处于低位、预期向上修复，建议尽快锁定价格，可先付小额试单款锁定当前成本。",
         "paypal.create_title": "### 创建付款发票",
         "paypal.payment_type": "支付类型",
         "paypal.type_sample": "样品费 - 新客户样品费用",
@@ -395,6 +400,8 @@ TRANSLATIONS = {
         "sidebar.about": "About",
         "sidebar.about_line1": "PayPal AI Hackathon 2026 Entry",
         "sidebar.about_line2": "Solving new customer trust in commodity trading with AI + PayPal",
+        "sidebar.demo_scenario": "Demo: view a past triggered signal",
+        "sidebar.demo_scenario_help": "For demonstration. Switches the whole app to the most recent day in the demo data where a spread actually crossed the trigger line, recomputed with the same logic. Not fabricated data.",
 
         # --- Config Status ---
         "config.not_configured": "Not Configured (Demo Mode)",
@@ -496,6 +503,7 @@ TRANSLATIONS = {
         "market.subtitle": "Ferrous metals commodity market observation and spread analysis",
         "market.degraded_warning": "Remote signals degraded to Demo mode: ",
         "market.demo_warning": "⚠️ Currently in demo mode, using synthetic data to demonstrate system functionality. Signals are for demonstration only and do not constitute investment advice.",
+        "market.scenario_note": "Demo replay: the signals below are for {date}, a day in the synthetic demo data where a spread actually triggered (recomputed with the same logic, not fabricated).",
         "market.source_label": "Signal Source: ",
         "market.chart_source_label": "Chart Source: ",
         "market.as_of_label": "Data As Of: ",
@@ -586,6 +594,8 @@ TRANSLATIONS = {
         "paypal.pricing_bull": "Market is bullish (upward trend). Recommend paying promptly to lock in price, consider full payment to secure current low price.",
         "paypal.pricing_bear": "Market is bearish (downward trend). Recommend conservative payment, consider installment or cash-on-delivery to avoid price decline risk.",
         "paypal.pricing_neutral": "Market is range-bound. Recommend standard payment method, stay flexible, consider price adjustment clauses.",
+        "paypal.pricing_spread_high": "Spread is elevated and expected to converge lower. Quote at market price with room to negotiate; no need to rush payment.",
+        "paypal.pricing_spread_low": "Spread is depressed and expected to recover higher. Recommend locking the price soon; a small trial payment can secure current cost.",
         "paypal.create_title": "### Create Payment Invoice",
         "paypal.payment_type": "Payment Type",
         "paypal.type_sample": "Sample Fee - New customer sample cost",

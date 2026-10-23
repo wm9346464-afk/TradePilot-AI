@@ -37,6 +37,11 @@ class TrustScoreResult:
             "recommendations": self.recommendations,
         }
 
+    @property
+    def level_en(self) -> str:
+        """英文信任等级，供 app.py 双语展示直接引用。"""
+        return {"高": "High", "中": "Medium", "低": "Low"}.get(self.level, self.level)
+
 
 def calculate_trust_score(
     contract_issues_count: int = 0,

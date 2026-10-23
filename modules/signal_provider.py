@@ -108,13 +108,14 @@ class DemoSignalProvider(SignalProvider):
     不包含任何真实生产策略参数或回测结果。
     """
 
-    def __init__(self, data_path: Optional[str] = None):
+    def __init__(self, data_path: Optional[str] = None, df: Optional[pd.DataFrame] = None):
         self._data_path = data_path or os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             "data", "demo_market_data.csv"
         )
         self._data_warning = ""
-        self._df = self._load_data()
+        # df 供"历史回看"场景注入同一份数据的截断窗口，避免复制一套计算逻辑。
+        self._df = df.copy() if df is not None else self._load_data()
 
     def _load_data(self) -> pd.DataFrame:
         """加载合成演示数据"""
@@ -282,6 +283,28 @@ class DemoSignalProvider(SignalProvider):
             error_code="DEMO_DATA_FALLBACK" if self._data_warning else "",
             fallback_reason=self._data_warning,
         )
+
+    def get_triggered_demo_bundle(self, lang: str = "zh", lookback: int = 250) -> Dict:
+        """回看演示数据里最近一次"真实触发"那一天的信号快照。
+
+        这不是构造假信号：在最近 lookback 个交易日里往前找，取第一个至少有一个
+        价差越过触发线的交易日，用与"最新一日"完全相同的计算口径重算当日信号。
+        因此 z 值、方向、置信度、原因全部是算出来的，只有 as_of 是那一天。
+        样本里找不到触发行时退回最新一日。
+        """
+        if len(self._df) < 130:
+            return self.get_all_signals(lang=lang)
+
+        start = max(121, len(self._df) - lookback)
+        for end in range(len(self._df), start, -1):
+            snapshot = DemoSignalProvider(data_path=self._data_path, df=self._df.iloc[:end])
+            bundle = snapshot.get_all_signals(lang=lang)
+            if any(bool(sig.get("triggered")) for sig in bundle["signals"].values()):
+                bundle["scenario"] = "historical_trigger"
+                bundle["scenario_date"] = bundle["as_of"]
+                bundle["demo_scenario"] = True
+                return bundle
+        return self.get_all_signals(lang=lang)
 
     def _make_bundle(self, signals: Dict[str, dict], degraded: bool, error_code: str, fallback_reason: str) -> Dict:
         return {

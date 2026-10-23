@@ -4,6 +4,7 @@ When Streamlit is installed, AppTest exercises all five pages. In minimal
 environments without Streamlit, source compilation checks still run.
 """
 
+import ast
 import sys
 from pathlib import Path
 
@@ -45,6 +46,32 @@ def test_app_source_compiles_and_declares_five_pages():
     # Verify app.py imports i18n
     assert "from modules.i18n import t" in source
     assert "_t(" in source
+
+
+def test_all_workflow_notification_calls_match_function_signature():
+    """Catch keyword mismatches such as product= vs product_name=."""
+    tree = ast.parse(APP_PATH.read_text(encoding="utf-8"))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "generate_trade_workflow_notifications"
+    ]
+
+    assert calls, "app.py should call generate_trade_workflow_notifications"
+    required = {
+        "customer_name",
+        "contract_id",
+        "product_name",
+        "quantity",
+        "amount",
+    }
+    for call in calls:
+        keywords = {kw.arg for kw in call.keywords if kw.arg}
+        missing = required - keywords
+        assert not missing, f"workflow notification call missing {sorted(missing)}"
+        assert "product" not in keywords, "use product_name=, not product="
 
 
 def _find_button(app, label):
