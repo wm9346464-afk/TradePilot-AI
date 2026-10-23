@@ -37,6 +37,7 @@ from .policy import PolicyEngine, PolicyViolation
 from .state_machine import DealStateMachine
 from .replay import RunBundle
 from .passport import verify_passport
+from .store import RunStore
 
 
 class TrustLoopService:
@@ -51,6 +52,7 @@ class TrustLoopService:
         state_machine: DealStateMachine | None = None,
         agent_planner=None,
         tool_registry: ToolRegistry | None = None,
+        store: RunStore | None = None,
     ) -> None:
         self.contract_gateway = contract_gateway
         self.paypal_gateway = paypal_gateway
@@ -60,6 +62,7 @@ class TrustLoopService:
         self.state_machine = state_machine or DealStateMachine()
         self.agent_planner = agent_planner or RuleBasedPlanner()
         self.tool_registry = tool_registry or build_default_tool_registry()
+        self.store = store
         self._runs: dict[str, DealRun] = {}
         self._audits: dict[str, AuditLog] = {}
         self._negotiations: dict[str, NegotiationResult] = {}
@@ -598,6 +601,9 @@ class TrustLoopService:
         audit = AuditLog.from_events(parsed.run.run_id, parsed.events)
         self._runs[parsed.run.run_id] = parsed.run
         self._audits[parsed.run.run_id] = audit
+        if self.store:
+            self.store.save_run(parsed.run)
+            self.store.replace_audit_events(parsed.run.run_id, parsed.events)
         return parsed.run
 
     def verify_trust_passport(self, run_id: str):
@@ -605,6 +611,15 @@ class TrustLoopService:
         if not run.passport:
             raise PolicyViolation("Trust Passport has not been issued")
         return verify_passport(run.passport, self.get_audit_events(run_id))
+
+    def find_run_by_passport(self, passport_id: str) -> DealRun | None:
+        if not self.store:
+            return None
+        run = self.store.find_run_by_passport(passport_id)
+        if run is not None:
+            self._runs[run.run_id] = run
+            self._stores_audit_from_store(run.run_id)
+        return run
 
     def run_full_demo(self, deal_input: DealInput) -> DealRun:
         run = self.start_case(deal_input)
@@ -626,13 +641,11 @@ class TrustLoopService:
         return self._runs[run.run_id]
 
     def get_run(self, run_id: str) -> DealRun:
-        if run_id not in self._runs:
-            raise KeyError(f"Unknown run_id: {run_id}")
+        self._hydrate_run(run_id)
         return self._runs[run_id]
 
     def get_audit_events(self, run_id: str) -> list[AuditEvent]:
-        if run_id not in self._audits:
-            raise KeyError(f"Unknown run_id: {run_id}")
+        self._hydrate_run(run_id)
         return list(self._audits[run_id].events)
 
     def simulate_negotiation(
@@ -649,6 +662,8 @@ class TrustLoopService:
             buyer_max_initial_payment=buyer_max_initial_payment,
         )
         self._negotiations[run_id] = result
+        if self.store:
+            self.store.save_negotiation(run_id, result)
         self._audit(
             run_id,
             "NEGOTIATION_COMPLETED",
@@ -666,12 +681,18 @@ class TrustLoopService:
                 "final_credit_days": result.final_credit_days,
             },
         )
+        self._save(run)
         return result
 
     def get_negotiation(self, run_id: str) -> NegotiationResult | None:
+        if run_id not in self._negotiations and self.store:
+            persisted = self.store.load_negotiation(run_id)
+            if persisted is not None:
+                self._negotiations[run_id] = persisted
         return self._negotiations.get(run_id)
 
     def verify_audit_chain(self, run_id: str) -> bool:
+        self._hydrate_run(run_id)
         return self._audits[run_id].verify_chain()
 
     def _new_milestone(
@@ -771,6 +792,40 @@ class TrustLoopService:
     def _save(self, run: DealRun) -> None:
         run = run.model_copy(update={"updated_at": datetime.now(timezone.utc)})
         self._runs[run.run_id] = run
+        if self.store:
+            self.store.save_checkpoint(run, self._audits[run.run_id].events)
+
+    def _hydrate_run(self, run_id: str) -> None:
+        if run_id in self._runs and run_id in self._audits:
+            return
+        persisted_run = self.store.load_run(run_id) if self.store else None
+        persisted_events = self.store.load_audit_events(run_id) if self.store else []
+        if persisted_run is None and run_id not in self._runs:
+            raise KeyError(f"Unknown run_id: {run_id}")
+        if persisted_run is not None:
+            self._runs.setdefault(run_id, persisted_run)
+        if run_id not in self._audits:
+            try:
+                self._audits[run_id] = (
+                    AuditLog.from_events(run_id, persisted_events)
+                    if persisted_events
+                    else AuditLog(run_id)
+                )
+            except ValueError as exc:
+                raise PolicyViolation(f"Persisted audit chain is invalid: {exc}") from exc
+
+    def _stores_audit_from_store(self, run_id: str) -> None:
+        if not self.store or run_id in self._audits:
+            return
+        events = self.store.load_audit_events(run_id)
+        try:
+            self._audits[run_id] = (
+                AuditLog.from_events(run_id, events)
+                if events
+                else AuditLog(run_id)
+            )
+        except ValueError as exc:
+            raise PolicyViolation(f"Persisted audit chain is invalid: {exc}") from exc
 
 
 def demo_deal_input() -> DealInput:
@@ -799,10 +854,13 @@ def build_runtime_service(
     *,
     paypal_backend: str = "fake",
     use_llm: bool = True,
+    store: RunStore | None = None,
+    store_path: str | None = None,
 ) -> TrustLoopService:
     from .gateways.contracts import ExistingContractReviewGateway
     from .gateways.factory import build_paypal_gateway
     from .policy import PolicyConfig
+    from .store import SQLiteRunStore
 
     fx_provider = build_fx_provider()
     max_invoice_amount = Decimal(os.getenv("MAX_INVOICE_AMOUNT_USD", "10000"))
@@ -813,6 +871,14 @@ def build_runtime_service(
         fx_provider,
     )
     planner = LLMPlanner() if use_llm else RuleBasedPlanner()
+    selected_store_path = (
+        store_path
+        if store_path is not None
+        else os.getenv("TRUSTLOOP_STORE_PATH", "").strip()
+    )
+    selected_store = store or (
+        SQLiteRunStore(selected_store_path) if selected_store_path else None
+    )
     return TrustLoopService(
         contract_gateway=ExistingContractReviewGateway(),
         paypal_gateway=build_paypal_gateway(paypal_backend),
@@ -820,5 +886,6 @@ def build_runtime_service(
         policy_engine=policy,
         currency_policy=CurrencyPolicy(fallback_currency="USD"),
         agent_planner=planner,
+        store=selected_store,
     )
 

@@ -52,3 +52,8 @@ codex_audit_*
 codex_review_*
 codex_fix_*
 *.log
+
+# Local TrustLoop session database
+data/*.db
+data/*.db-wal
+data/*.db-shm
