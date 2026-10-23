@@ -264,6 +264,9 @@ class TrustPassport(StrictModel):
     audit_head_hash: str
     issued_at: datetime = Field(default_factory=utc_now)
     mode: RunMode
+    signature_algorithm: Literal["HMAC-SHA256"] | None = None
+    signing_key_id: str | None = None
+    signature: str | None = None
 
 
 class DealRun(StrictModel):

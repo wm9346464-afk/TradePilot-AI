@@ -16,6 +16,7 @@ def test_passport_html_contains_verified_evidence():
     assert "Payments" in document
     assert "Human approvals" in document
     assert "Agent decision evidence" in document
+    assert "Issuer signature" in document
     assert "not a legal opinion" in document
 
 

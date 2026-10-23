@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from .audit import AuditEvent, AuditLog
 from .models import TrustPassport
+from .passport_signature import verify_passport_signature
 
 
 class PassportVerificationResult(BaseModel):
@@ -19,6 +20,8 @@ class PassportVerificationResult(BaseModel):
 def verify_passport(
     passport: TrustPassport,
     events: list[AuditEvent],
+    *,
+    signing_key: str | None = None,
 ) -> PassportVerificationResult:
     checks = {
         "has_audit_events": bool(events),
@@ -38,6 +41,15 @@ def verify_passport(
     checks["has_paid_settlement"] = any(
         item.status == "PAID" for item in passport.settlements
     )
+    if signing_key is not None or passport.signature is not None:
+        checks["issuer_signature_valid"] = bool(
+            signing_key and verify_passport_signature(passport, signing_key)
+        )
     valid = all(checks.values())
-    message = "Passport integrity verified." if valid else "Passport verification failed."
+    if valid and "issuer_signature_valid" in checks:
+        message = "Passport integrity and issuer signature verified."
+    elif valid:
+        message = "Passport integrity verified; issuer signature is not configured."
+    else:
+        message = "Passport verification failed."
     return PassportVerificationResult(valid=valid, checks=checks, message=message)

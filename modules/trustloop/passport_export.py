@@ -74,6 +74,9 @@ th{{background:#f0f6ff}} .meta{{background:#f7f9fa;padding:16px;border-radius:12
 <h2>Agent decision evidence</h2><table><tr><th>Action</th><th>Actor</th><th>Summary</th><th>Requested tools</th></tr>{agent_rows}</table>
 <h2>FX snapshots</h2><table><tr><th>Pair</th><th>Rate</th><th>Source</th><th>Mode</th></tr>{fx_rows}</table>
 <h2>Audit head</h2><p class="hash">{html.escape(passport.audit_head_hash)}</p>
+<h2>Issuer signature</h2><p><strong>Algorithm:</strong> {html.escape(passport.signature_algorithm or 'Not configured')}</p>
+<p><strong>Key ID:</strong> {html.escape(passport.signing_key_id or 'N/A')}</p>
+<p class="hash">{html.escape(passport.signature or 'Unsigned passport')}</p>
 <footer>This document is an audit artifact. It is not a legal opinion, credit rating or payment guarantee.</footer>
 </body></html>"""
 

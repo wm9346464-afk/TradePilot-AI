@@ -84,15 +84,18 @@ def test_trustloop_ui_switches_to_chinese(monkeypatch):
 
 def test_public_passport_verification_uses_trusted_store(monkeypatch, tmp_path):
     database = tmp_path / "trustloop.db"
+    signing_key = "test-passport-signing-key-32-chars-minimum"
     service = build_runtime_service(
         paypal_backend="fake",
         use_llm=False,
         store_path=str(database),
+        passport_signing_key=signing_key,
     )
     completed = service.run_full_demo(demo_deal_input())
     assert completed.passport is not None
 
     monkeypatch.setenv("TRUSTLOOP_STORE_PATH", str(database))
+    monkeypatch.setenv("TRUSTLOOP_PASSPORT_SIGNING_KEY", signing_key)
     monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
     monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")
     at = AppTest.from_file(str(APP_PATH)).run(timeout=30)

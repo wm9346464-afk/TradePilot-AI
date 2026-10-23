@@ -38,6 +38,7 @@ from .policy import PolicyEngine, PolicyViolation
 from .state_machine import DealStateMachine
 from .replay import RunBundle
 from .passport import verify_passport
+from .passport_signature import sign_passport
 from .store import RunStore
 
 
@@ -54,6 +55,7 @@ class TrustLoopService:
         agent_planner=None,
         tool_registry: ToolRegistry | None = None,
         store: RunStore | None = None,
+        passport_signing_key: str | None = None,
     ) -> None:
         self.contract_gateway = contract_gateway
         self.paypal_gateway = paypal_gateway
@@ -64,6 +66,7 @@ class TrustLoopService:
         self.agent_planner = agent_planner or RuleBasedPlanner()
         self.tool_registry = tool_registry or build_default_tool_registry()
         self.store = store
+        self.passport_signing_key = passport_signing_key
         self._runs: dict[str, DealRun] = {}
         self._audits: dict[str, AuditLog] = {}
         self._negotiations: dict[str, NegotiationResult] = {}
@@ -645,6 +648,8 @@ class TrustLoopService:
         passport = passport.model_copy(
             update={"audit_head_hash": self._audits[run_id].head_hash}
         )
+        if self.passport_signing_key:
+            passport = sign_passport(passport, self.passport_signing_key)
         run = run.model_copy(update={"passport": passport})
         self._save(run)
         return passport
@@ -667,7 +672,11 @@ class TrustLoopService:
         run = self.get_run(run_id)
         if not run.passport:
             raise PolicyViolation("Trust Passport has not been issued")
-        return verify_passport(run.passport, self.get_audit_events(run_id))
+        return verify_passport(
+            run.passport,
+            self.get_audit_events(run_id),
+            signing_key=self.passport_signing_key,
+        )
 
     def find_run_by_passport(self, passport_id: str) -> DealRun | None:
         if not self.store:
@@ -925,6 +934,7 @@ def build_runtime_service(
     use_llm: bool = True,
     store: RunStore | None = None,
     store_path: str | None = None,
+    passport_signing_key: str | None = None,
 ) -> TrustLoopService:
     from .gateways.contracts import ExistingContractReviewGateway
     from .gateways.factory import build_paypal_gateway
@@ -948,6 +958,11 @@ def build_runtime_service(
     selected_store = store or (
         SQLiteRunStore(selected_store_path) if selected_store_path else None
     )
+    selected_signing_key = (
+        passport_signing_key
+        if passport_signing_key is not None
+        else os.getenv("TRUSTLOOP_PASSPORT_SIGNING_KEY", "").strip() or None
+    )
     return TrustLoopService(
         contract_gateway=ExistingContractReviewGateway(),
         paypal_gateway=build_paypal_gateway(paypal_backend),
@@ -956,5 +971,6 @@ def build_runtime_service(
         currency_policy=CurrencyPolicy(fallback_currency="USD"),
         agent_planner=planner,
         store=selected_store,
+        passport_signing_key=selected_signing_key,
     )
 
