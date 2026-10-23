@@ -277,10 +277,10 @@ def create_invoice_api(
 
         payload = {
             "detail": detail,
-            # 【修复2】使用环境变量配置的真实沙箱商家邮箱，不硬编码
+            # PayPal rejects a mismatched invoicer email even when OAuth succeeds.
+            # Bind the invoice to the authenticated merchant and only set display name.
             "invoicer": {
                 "name": {"full_name": get_merchant_name()},
-                "email_address": merchant_email,
             },
             "primary_recipients": [
                 {
