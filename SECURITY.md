@@ -17,7 +17,7 @@
 | 外部服务 | 触发条件 | 涉及数据 | 本地保存 |
 |---|---|---|---|
 | 本地 Demo | 默认模式，无需配置 | 仅读取 `data/demo_market_data.csv` 合成数据 | 不发送外部请求 |
-| PayPal API | 显式启用 PayPal 沙箱 API 并创建发票 | 买家名称、邮箱、金额、币种、合同编号(reference)、支付类型 | 当前 Streamlit session 中的发票草稿与状态 |
+| PayPal API | 显式启用 PayPal 沙箱 API 并创建/查询发票 | 买家名称、邮箱、金额、币种、合同编号(reference)、支付类型、发票与交易状态 | 当前 session；配置 `TRUSTLOOP_STORE_PATH` 时写入本地 SQLite |
 | 远程信号 API | 配置非占位符 `SIGNAL_API_URL` | 请求头 API Key、信号服务端点 | 不写入数据库 |
 | LLM API | 显式启用 AI 合同审查并调用 | 合同全文（可能包含敏感信息） | 不额外持久化，结果仅保留在当前 session |
 
@@ -26,9 +26,11 @@
 ## Demo安全边界
 
 - 所有行情、合同、通知、付款链接和物流单号均为演示内容。
-- Demo 发票只保存在当前 Streamlit session，不写入数据库。
+- 配置 `TRUSTLOOP_STORE_PATH` 后，运行快照、审批、发票索引和审计链会写入本地 SQLite；未配置时只保存在当前 session。
 - 可选的 `APP_PASSWORD` 只提供轻量访问门槛，不替代企业身份认证和访问控制。
-- 生产环境需要补充认证、授权、速率限制、审计日志、密钥托管和支付回调验签。
+- Webhook 端点会先调用 PayPal 官方验签接口，再重新查询发票状态，不直接信任回调 body。
+- 配置 `TRUSTLOOP_PASSPORT_SIGNING_KEY` 后，Passport 使用 HMAC-SHA256 做发行方签名；验证时必须使用同一服务端密钥。
+- 生产环境仍需补充企业身份认证、授权、分布式速率限制、集中式日志、密钥托管和持久化备份。
 
 ## 漏洞报告
 

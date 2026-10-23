@@ -51,9 +51,14 @@ The system combines:
 - **Buyer/seller negotiation:** bounded agents negotiate inside hard payment and credit constraints.
 - **Human-in-the-loop control:** every financial milestone needs a human approval bound to an exact amount and currency.
 - **PayPal execution:** invoices are created, sent, and queried through the PayPal REST API.
+- **Signed Webhooks:** verified payment events are re-queried against PayPal before progression.
 - **Verified progression:** no optimistic UI states; only `PAID` unlocks the next stage.
 - **Auditable trust evidence:** approval, payment, FX, and agent decision events are packaged in a Trust Passport.
 - **Portable replay:** the complete run and audit chain can be exported and loaded read-only from a replay bundle.
+- **Resumable sessions:** runs, audit chains and invoice lookups are persisted to SQLite when configured.
+- **Public verification:** a stored Passport can be checked from a public verification view.
+- **Issuer signatures:** configured deployments sign Passport evidence with HMAC-SHA256.
+- **Bilingual Deal Room:** English and Chinese flows cover the primary operator experience.
 
 ---
 
@@ -242,7 +247,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 56 automated tests passing;
+- 77 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
@@ -255,6 +260,7 @@ Current status:
 ```text
 app.py                         Legacy multi-page app
 app_trustloop.py               TrustLoop Deal Room
+webhook_server.py              Signed PayPal Webhook HTTP endpoint
 modules/trustloop/             Domain, state, agent, gateways, policy, audit
 modules/contract_checker.py    Contract review and evidence checks
 modules/paypal_payment.py      Existing PayPal REST implementation
@@ -269,10 +275,8 @@ tests/                         Unit, integration and AppTest coverage
 
 - The public demo is not yet deployed to a permanent hosted URL.
 - PayPal MCP adapter is implemented behind an injectable client; REST remains the stable verified path.
-- Buyer/seller agent negotiation is a planned enhancement.
-- Persistent event storage and replay across process restarts are planned.
-- Webhook verification logic uses PayPal's official verification API; a production HTTP webhook endpoint is not deployed.
-- Trust Passport supports JSON, printable HTML, integrity verification, and replay export; a public verification page is planned.
+- Webhook endpoint code and local tests are complete; a public HTTPS URL and PayPal dashboard registration are external deployment steps.
+- SQLite persistence requires `TRUSTLOOP_STORE_PATH`; hosted durability depends on the platform's persistent disk.
 - The project is a Sandbox/Demo and does not move real money.
 
 ---
@@ -281,6 +285,7 @@ tests/                         Unit, integration and AppTest coverage
 
 - [Architecture](docs/TRUSTLOOP_ARCHITECTURE.md)
 - [Sandbox setup](docs/SANDBOX_SETUP.md)
+- [Deployment guide](docs/DEPLOYMENT.md)
 - [Demo script](docs/DEMO_SCRIPT.md)
 - [Judge guide](docs/JUDGE_GUIDE.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)

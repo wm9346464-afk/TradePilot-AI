@@ -26,7 +26,23 @@ def load_config() -> None:
         return
     if load_dotenv is not None:
         load_dotenv(PROJECT_ROOT / ".env", override=False)
+    try:
+        import streamlit as st
+
+        _apply_secret_mapping(dict(st.secrets))
+    except Exception:
+        # Local CLI/tests do not have Streamlit secrets; .env remains authoritative.
+        pass
     _ENV_LOADED = True
+
+
+def _apply_secret_mapping(secrets: dict) -> None:
+    """Map flat Streamlit secrets to env vars without overriding explicit env."""
+    for key, value in secrets.items():
+        if key in os.environ:
+            continue
+        if isinstance(value, (str, int, float, bool)):
+            os.environ[str(key)] = str(value)
 
 
 def _get_env(name: str) -> str:

@@ -16,18 +16,18 @@ Legend:
 | 1. Competition and repository foundation | PARTIAL | Local branch and tags exist; CI added. GitHub push, repository homepage/topics and final release remain EXTERNAL. |
 | 2. P0 fixes | DONE | Onboarding notification call, sample contract state, Webhook wording, regression tests and test isolation fixed. |
 | 3. Domain models | DONE | Money, DealRun, Risk, Ladder, Approval, PaymentResult, TrustPassport and AuditEvent implemented. |
-| 4. State machine and audit | PARTIAL | Deterministic transitions, idempotency and hash chain implemented; process-restart recovery and replay storage remain TODO. |
-| 5. Multi-currency | PARTIAL | Money, CNY restrictions, zero-decimal currencies, fixture/live FX and tests implemented; full currency-selection UI remains TODO. |
+| 4. State machine and audit | DONE | Deterministic transitions, idempotency, hash chain, SQLite checkpoints and cross-process resume implemented and tested. |
+| 5. Multi-currency | DONE | Money, CNY restrictions, zero-decimal currencies, fixture/live FX, UI currency selection and tests implemented. |
 | 6. Contract review | PARTIAL | Rule and AI review, evidence validation and fallback implemented; deeper multi-currency contract parsing remains TODO. |
-| 7. PayPal gateway | PARTIAL | Fake and REST gateways implemented; live Sandbox create/send/pay/PAID verified; official Webhook verification API and injectable MCP adapter implemented. Deployed webhook endpoint and live MCP verification remain TODO. |
+| 7. PayPal gateway | PARTIAL | Fake and REST gateways, signed Webhook HTTP endpoint and injectable MCP adapter implemented; live Sandbox create/send/pay/PAID verified. Public Webhook deployment and live MCP verification remain external/TODO. |
 | 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy, fallback and ordered create/send tool execution implemented; broader generic tool-selection loop remains PARTIAL. |
 | 9. Buyer/seller negotiation | PARTIAL | Bounded deterministic Buyer/Seller Agent negotiation, overlap checks, final terms and audit events implemented; LLM-to-LLM negotiation remains TODO. |
 | 10. Trust Ladder | PARTIAL | Three-stage ladder, per-stage approval and unlock implemented; more risk-driven amount policy remains TODO. |
-| 11. Trust Passport | PARTIAL | JSON, printable HTML, risk, FX, approvals, settlements, audit hash, integrity verification and replay bundle implemented; public verification and agent-action detail remain TODO. |
-| 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths implemented; bilingual polish, replay UI and hosted testing remain. |
-| 13. Security and privacy | PARTIAL | Secret isolation, human approval, amount limits, prompt constraints, session rate limiting and secret scan implemented; broader security/prompt-injection tests remain TODO. |
-| 14. Session and persistence | PARTIAL | Run bundle export/restore, tamper validation and completed-run replay UI implemented; SessionStore, SQLiteStore and live resumable sessions remain TODO. |
-| 15. Testing | PARTIAL | 56 tests pass; CI and secret scan exist. Full live REST UI test and broader security matrix remain PARTIAL. |
+| 11. Trust Passport | PARTIAL | JSON, printable HTML, Agent evidence, FX, approvals, settlements, audit hash, replay and HMAC issuer signatures implemented; server-side public verification page added. Deployed verification URL remains external. |
+| 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths, replay, language switch, multi-currency selection and resume-by-ID implemented; hosted UI testing remains external. |
+| 13. Security and privacy | DONE | Secret isolation, human approval, amount/currency limits, prompt-injection matrix, rate limiting, public verification, issuer signatures and secret scan implemented. |
+| 14. Session and persistence | DONE | SQLite run/audit/negotiation/invoice index, cross-process resume, replay export/restore and tamper validation implemented. |
+| 15. Testing | PARTIAL | 77 tests pass; CI and secret scan exist. Real REST UI payment rehearsal remains a release check. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 
@@ -41,10 +41,7 @@ Legend:
 
 ## High-value post-submission improvements
 
-- Dynamic tool-selected execution.
-- Buyer/seller agent negotiation.
-- PayPal MCP adapter.
-- Persistent event store and cross-process replay UI.
-- Trust Passport PDF and public verification.
-- Broader prompt-injection and security test suite.
+- Live PayPal MCP client verification with the official transport.
+- PDF-specific report generation beyond printable HTML.
+- Optional LLM-to-LLM negotiation with the same hard policy envelope.
 

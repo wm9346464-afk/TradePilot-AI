@@ -17,6 +17,16 @@ SECRET_PATTERNS = (
     re.compile(r"sk-[A-Za-z0-9]{24,}"),
     re.compile(r"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----"),
     re.compile(r"(?i)PAYPAL_CLIENT_SECRET\s*=\s*[^\s#]{12,}"),
+    re.compile(
+        r"(?im)^\s*LLM_API_KEY\s*=\s*(?!os\.|<|your_|replace|change)[^\s#]{16,}\s*$"
+    ),
+    re.compile(
+        r"(?im)^\s*APP_PASSWORD\s*=\s*(?!os\.|<|your_|replace|change)[^\s#]{8,}\s*$"
+    ),
+    re.compile(
+        r"(?im)^\s*TRUSTLOOP_PASSPORT_SIGNING_KEY\s*=\s*"
+        r"(?!os\.|<|your_|replace|change)[^\s#]{16,}\s*$"
+    ),
 )
 
 

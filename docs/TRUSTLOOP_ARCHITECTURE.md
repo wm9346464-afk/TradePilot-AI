@@ -28,6 +28,10 @@ TrustLoopService
 ├── PayPalGateway (FAKE / REST / future MCP)
 ├── FX provider
 ├── AuditLog
+├── SQLite RunStore
+├── Passport issuer signature
+├── Public verification view
+├── PayPal Webhook endpoint
 └── TrustPassport
 ```
 
@@ -40,6 +44,8 @@ TrustLoopService
 - PayPal REST is the stable backend; MCP is a future switchable adapter.
 - Demo, Replay and Live Sandbox modes must be visibly distinct.
 - Only PayPal `PAID` status can unlock the next milestone.
+- Verified Webhook events trigger an authoritative PayPal re-query before state changes.
+- Passport exports can be issuer-signed with HMAC-SHA256 when a signing key is configured.
 - Trust Passport is an audit artifact, not a legal opinion, credit rating or payment guarantee.
 
 ## Current implementation status
@@ -62,6 +68,10 @@ Implemented:
 - Three-stage Trust Ladder with explicit human approvals.
 - Audit hash chain and Trust Passport.
 - Trust Passport integrity verification and portable replay bundles.
+- SQLite persistence for runs, audit chains, negotiations and invoice lookup.
+- Public server-side Passport verification with optional issuer signatures.
+- Signed PayPal Webhook HTTP endpoint with idempotent event processing.
+- English/Chinese Deal Room and UI multi-currency selection.
 - Deal Room with Fake and REST paths.
 
 Requires final external delivery:

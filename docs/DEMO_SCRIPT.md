@@ -12,7 +12,8 @@ Show the Deal Room hero.
 
 > A buyer requests 500 tons of rebar and 30 days of credit on a CNY 1.825 million order. They have no payment history with this seller.
 
-Click `Review deal & build ladder`.
+Choose `USD` or `EUR`, then click `Review deal & build ladder`. The language
+switch can show the same workflow in Chinese without changing the evidence.
 
 ## 0:35–1:00 — Evidence-first risk review
 
@@ -20,11 +21,11 @@ Point to the risk evidence panel:
 
 > The agent rejects unsecured credit and finds specific contract problems. Every finding links back to the contract text.
 
-Show Agent decision, requested tools and Trust Ladder.
+Show Agent decision, requested tools, Buyer/Seller negotiation and the Trust Ladder.
 
 ## 1:00–1:20 — Multi-currency control
 
-> The contract is in CNY. Because cross-border CNY is restricted for this PayPal path, the agent proposes a USD milestone invoice and records an FX snapshot. It does not invent a rate or hide the conversion.
+> The contract is in CNY. Because cross-border CNY is restricted for this PayPal path, the agent proposes a supported milestone invoice currency and records an FX snapshot. It does not invent a rate or hide the conversion.
 
 Show contract currency, invoice currency and FX source.
 
@@ -46,9 +47,11 @@ Repeat or replay the next approval. Show `PAID` evidence and stage unlock.
 
 Show the passport JSON/audit timeline:
 
-> Every risk, approval, tool call, FX snapshot and payment becomes a portable Trust Passport.
+> Every risk, approval, Agent decision, FX snapshot and payment becomes a portable Trust Passport. The issuer signature and audit hash let a public verifier distinguish this evidence from an edited JSON file.
 >
 > We are not automating checkout. We are automating the formation of trust.
+
+Open the public verification page from the Passport card and show `VALID`.
 
 ## Recording notes
 
