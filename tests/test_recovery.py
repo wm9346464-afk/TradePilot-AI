@@ -143,6 +143,44 @@ def test_successful_invoice_response_without_id_is_rejected():
         service.create_invoice(run.run_id)
 
 
+def test_invoice_creation_retry_reuses_the_same_idempotency_key():
+    class FlakyGateway:
+        backend_name = "FAKE"
+
+        def __init__(self):
+            self.keys = []
+
+        def create_invoice(self, request):
+            self.keys.append(request.idempotency_key)
+            if len(self.keys) == 1:
+                raise RuntimeError("temporary failure")
+            return PaymentResult(
+                success=True,
+                backend="FAKE",
+                mode="DEMO",
+                invoice_id="FAKE-RETRY-INV",
+                invoice_number="FAKE-RETRY-NO",
+                status="DRAFT",
+                amount=request.amount,
+            )
+
+    service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    run = service.propose_plan(run.run_id)
+    run = service.approve_plan(run.run_id)
+    gateway = FlakyGateway()
+    service.paypal_gateway = gateway
+
+    with pytest.raises(RuntimeError, match="temporary failure"):
+        service.create_invoice(run.run_id)
+    created = service.create_invoice(run.run_id)
+
+    assert created.state == DealState.INVOICE_CREATED
+    assert len(gateway.keys) == 2
+    assert gateway.keys[0] == gateway.keys[1]
+
+
 def test_verified_payment_intermediate_states_can_resume(tmp_path):
     database = tmp_path / "confirmed.db"
     service, run = _awaiting_payment(database)

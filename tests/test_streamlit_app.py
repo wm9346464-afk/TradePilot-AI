@@ -48,6 +48,12 @@ def test_app_source_compiles_and_declares_five_pages():
     assert "_t(" in source
 
 
+def test_legacy_contract_issue_html_is_escaped():
+    source = APP_PATH.read_text(encoding="utf-8")
+    assert "html.escape(str(issue.get('type'" in source
+    assert "html.escape(str(issue.get('description'" in source
+
+
 def test_all_workflow_notification_calls_match_function_signature():
     """Catch keyword mismatches such as product= vs product_name=."""
     tree = ast.parse(APP_PATH.read_text(encoding="utf-8"))

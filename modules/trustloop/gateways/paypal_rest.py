@@ -87,8 +87,14 @@ class PayPalRestGateway:
                 error_code=code,
                 error_message=str(raw.get("error", "PayPal invoice creation failed")),
                 retryable=retryable,
-                raw_response=raw,
             )
+        safe_response = {
+            "invoice_id": raw.get("invoice_id"),
+            "invoice_number": raw.get("invoice_number"),
+            "status": raw.get("status"),
+            "total": str(raw.get("total", request.amount.amount)),
+            "currency": raw.get("currency", request.amount.currency),
+        }
         return PaymentResult(
             success=True,
             backend="REST",
@@ -102,7 +108,7 @@ class PayPalRestGateway:
                 currency=raw.get("currency", request.amount.currency),
             ).quantized(),
             payment_url=raw.get("payment_url") or raw.get("recipient_view_url"),
-            raw_response=raw,
+            raw_response=safe_response,
         )
 
     def send_invoice(self, invoice_id: str) -> PaymentResult:
@@ -129,7 +135,6 @@ class PayPalRestGateway:
                 error_code=code,
                 error_message=str(raw.get("error", "PayPal invoice send failed")),
                 retryable=retryable,
-                raw_response=raw,
             )
         return PaymentResult(
             success=True,
@@ -138,7 +143,7 @@ class PayPalRestGateway:
             invoice_id=invoice_id,
             status="SENT",
             raw_status="SENT",
-            raw_response=raw,
+            raw_response={"success": True, "status": "SENT"},
         )
 
     def get_invoice(self, invoice_id: str) -> PaymentResult:
@@ -162,7 +167,6 @@ class PayPalRestGateway:
                 error_code=code,
                 error_message=str(raw.get("error", "PayPal invoice lookup failed")),
                 retryable=retryable,
-                raw_response=raw,
             )
         currency = str(raw.get("currency", "USD"))
         amount_value = raw.get("total", raw.get("amount", "0"))
@@ -181,6 +185,13 @@ class PayPalRestGateway:
             payment_url=raw.get("recipient_view_url"),
             paid_at=_parse_datetime(raw.get("paid_at")),
             transaction_id=raw.get("transaction_id") or None,
-            raw_response=raw,
+            raw_response={
+                "invoice_id": invoice_id,
+                "invoice_number": raw.get("invoice_number"),
+                "status": raw.get("status"),
+                "total": str(amount_value or "0"),
+                "currency": currency,
+                "transaction_id": raw.get("transaction_id"),
+            },
         )
 

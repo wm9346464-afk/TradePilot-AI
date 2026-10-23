@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
@@ -45,6 +46,12 @@ class RunStore(Protocol):
         ...
 
     def find_run_by_invoice(self, invoice_id: str) -> DealRun | None:
+        ...
+
+    def acquire_operation_lock(self, lock_key: str, owner: str, ttl_seconds: int) -> bool:
+        ...
+
+    def release_operation_lock(self, lock_key: str, owner: str) -> None:
         ...
 
     def list_recent_runs(self, *, limit: int = 10) -> list[DealRun]:
@@ -108,6 +115,11 @@ class SQLiteRunStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_invoice_index_invoice
                     ON invoice_index(invoice_id);
+                CREATE TABLE IF NOT EXISTS operation_locks (
+                    lock_key TEXT PRIMARY KEY,
+                    owner TEXT NOT NULL,
+                    expires_at REAL NOT NULL
+                );
                 """
             )
 
@@ -257,6 +269,29 @@ class SQLiteRunStore:
                 (invoice_id,),
             ).fetchone()
         return DealRun.model_validate_json(row["run_json"]) if row else None
+
+    def acquire_operation_lock(self, lock_key: str, owner: str, ttl_seconds: int) -> bool:
+        now = time.time()
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM operation_locks WHERE expires_at <= ?",
+                (now,),
+            )
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO operation_locks(lock_key, owner, expires_at)
+                VALUES (?, ?, ?)
+                """,
+                (lock_key, owner, now + max(1, ttl_seconds)),
+            )
+            return cursor.rowcount == 1
+
+    def release_operation_lock(self, lock_key: str, owner: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM operation_locks WHERE lock_key = ? AND owner = ?",
+                (lock_key, owner),
+            )
 
     def list_recent_runs(self, *, limit: int = 10) -> list[DealRun]:
         safe_limit = max(1, min(int(limit), 50))

@@ -12,9 +12,14 @@ import streamlit as st
 from modules.config import load_config
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
-from modules.trustloop.security import InMemoryRateLimiter, RateLimitExceeded
+from modules.trustloop.security import (
+    InMemoryRateLimiter,
+    RateLimitExceeded,
+    is_safe_paypal_payment_url,
+)
 from modules.trustloop.agent.executor import AgentToolExecutor
 from modules.trustloop.passport_export import render_passport_html
+from modules.trustloop.replay import parse_run_bundle_bytes
 from modules.trustloop.ui_i18n import ui_text
 
 
@@ -183,6 +188,16 @@ if app_password and not st.session_state.get("trustloop_authenticated", False):
         st.stop()
     st.session_state["trustloop_authenticated"] = True
 
+if (
+    os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake").strip().lower()
+    not in {"fake", "demo"}
+    and not app_password
+):
+    st.error(
+        "Live payment backends require APP_PASSWORD when the app is exposed to other users."
+    )
+    st.stop()
+
 if "trustloop_session_key" not in st.session_state:
     st.session_state["trustloop_session_key"] = uuid4().hex
 if "trustloop_rate_limiter" not in st.session_state:
@@ -262,7 +277,7 @@ with st.sidebar:
     )
     if uploaded_bundle and st.button(tx("open_replay"), use_container_width=True):
         try:
-            bundle = json.loads(uploaded_bundle.getvalue().decode("utf-8"))
+            bundle = parse_run_bundle_bytes(uploaded_bundle.getvalue())
             replay_service = build_runtime_service(paypal_backend="fake", use_llm=False)
             replay_run = replay_service.restore_run_bundle(bundle)
             if replay_run.state != DealState.PASSPORT_ISSUED:
@@ -594,11 +609,13 @@ if run.state == DealState.AWAITING_PAYMENT and run.plan and service:
         if (
             backend_name != "FAKE"
             and current_invoice
-            and current_invoice.payment_url
+            and is_safe_paypal_payment_url(current_invoice.payment_url)
         ):
             st.markdown(f"[{tx('open_payment')}]({current_invoice.payment_url})")
         elif backend_name == "FAKE":
             st.caption(tx("demo_payment_link"))
+        else:
+            st.caption("The gateway returned no trusted PayPal payment URL.")
         if backend_name == "FAKE" and st.button(
             tx("simulate_demo_payment"),
             type="primary",

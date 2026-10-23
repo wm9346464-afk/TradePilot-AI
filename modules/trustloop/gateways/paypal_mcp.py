@@ -21,9 +21,16 @@ class McpToolClient(Protocol):
 class McpPayPalGateway:
     backend_name = "MCP"
 
-    def __init__(self, client: McpToolClient, *, fallback=None) -> None:
+    def __init__(
+        self,
+        client: McpToolClient,
+        *,
+        fallback=None,
+        allow_write_fallback: bool = False,
+    ) -> None:
         self.client = client
         self.fallback = fallback
+        self.allow_write_fallback = allow_write_fallback
 
     def create_invoice(self, request: CreateInvoiceRequest) -> PaymentResult:
         try:
@@ -41,7 +48,7 @@ class McpPayPalGateway:
             )
             return self._to_result(raw, mode="LIVE_SANDBOX")
         except Exception:
-            if self.fallback is not None:
+            if self.fallback is not None and self.allow_write_fallback:
                 return self.fallback.create_invoice(request)
             raise
 
@@ -50,7 +57,7 @@ class McpPayPalGateway:
             raw = self.client.call_tool("send_invoice", {"invoice_id": invoice_id})
             return self._to_result(raw, mode="LIVE_SANDBOX")
         except Exception:
-            if self.fallback is not None:
+            if self.fallback is not None and self.allow_write_fallback:
                 return self.fallback.send_invoice(invoice_id)
             raise
 
@@ -87,6 +94,15 @@ class McpPayPalGateway:
             transaction_id=raw.get("transaction_id"),
             error_code=raw.get("error_code"),
             error_message=raw.get("error"),
-            raw_response=raw,
+            raw_response={
+                "invoice_id": raw.get("invoice_id") or raw.get("id"),
+                "invoice_number": raw.get("invoice_number"),
+                "status": raw.get("status"),
+                "currency": (
+                    amount.get("currency_code") if isinstance(amount, dict) else None
+                ),
+                "value": amount.get("value") if isinstance(amount, dict) else None,
+                "transaction_id": raw.get("transaction_id"),
+            },
         )
 

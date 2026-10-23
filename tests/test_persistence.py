@@ -1,11 +1,15 @@
 """SQLite persistence and cross-service resume tests."""
 
 import copy
+import threading
+import time
 
 import pytest
 
 from modules.trustloop.audit import AuditEvent
 from modules.trustloop.enums import DealState
+from modules.trustloop.gateways.fake_paypal import FakePayPalGateway
+from modules.trustloop.policy import PolicyViolation
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.store import SQLiteRunStore, StoreConflict
 
@@ -88,6 +92,67 @@ def test_sqlite_connections_close_so_the_database_can_be_removed(tmp_path):
     database.unlink()
 
     assert database.exists() is False
+
+
+def test_operation_lock_is_owned_and_released_atomically(tmp_path):
+    store = SQLiteRunStore(tmp_path / "locks.db")
+
+    assert store.acquire_operation_lock("run:create", "owner-1", 300) is True
+    assert store.acquire_operation_lock("run:create", "owner-2", 300) is False
+    store.release_operation_lock("run:create", "owner-1")
+    assert store.acquire_operation_lock("run:create", "owner-2", 300) is True
+
+
+def test_duplicate_create_invoice_is_blocked_before_external_call(tmp_path):
+    class SlowGateway(FakePayPalGateway):
+        def __init__(self):
+            super().__init__()
+            self.started = threading.Event()
+            self.calls = 0
+
+        def create_invoice(self, request):
+            self.calls += 1
+            self.started.set()
+            time.sleep(0.2)
+            return super().create_invoice(request)
+
+    database = tmp_path / "duplicate-create.db"
+    seed = _service(database)
+    run = seed.start_case(demo_deal_input())
+    run = seed.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = seed.propose_plan(run.run_id)
+    seed.approve_plan(run.run_id)
+
+    first = _service(database)
+    second = _service(database)
+    first_gateway = SlowGateway()
+    second_gateway = SlowGateway()
+    first.paypal_gateway = first_gateway
+    second.paypal_gateway = second_gateway
+    errors = []
+
+    def create_once():
+        try:
+            first.create_invoice(run.run_id)
+        except Exception as exc:  # pragma: no cover - failure assertion below
+            errors.append(exc)
+
+    thread = threading.Thread(target=create_once)
+    thread.start()
+    assert first_gateway.started.wait(timeout=2)
+
+    with pytest.raises(PolicyViolation, match="already in progress"):
+        second.create_invoice(run.run_id)
+
+    thread.join(timeout=5)
+    assert errors == []
+    assert first_gateway.calls == 1
+    assert second_gateway.calls == 0
+    persisted = _service(database).get_run(run.run_id)
+    assert persisted.state == DealState.INVOICE_CREATED
 
 
 def test_fake_paypal_invoice_state_is_rehydrated_after_restart(tmp_path):

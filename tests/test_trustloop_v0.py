@@ -12,6 +12,7 @@ from modules.trustloop.gateways.paypal import CreateInvoiceRequest
 from modules.trustloop.gateways.fake_paypal import FakePayPalGateway
 from modules.trustloop.fx import FixtureFxRateProvider, FxSnapshot, HttpFxRateProvider
 from modules.trustloop.money import money
+from modules.trustloop.replay import MAX_REPLAY_BUNDLE_BYTES, parse_run_bundle_bytes
 from modules.trustloop.policy import PolicyViolation
 from modules.trustloop.service import (
     build_demo_service,
@@ -247,6 +248,13 @@ def test_fx_snapshot_rejects_nonpositive_rate_and_invalid_currency():
             source="invalid",
             observed_at=now,
         )
+
+
+def test_replay_bundle_parser_rejects_oversized_and_non_object_payloads():
+    with pytest.raises(ValueError, match="exceeds"):
+        parse_run_bundle_bytes(b"x" * (MAX_REPLAY_BUNDLE_BYTES + 1))
+    with pytest.raises(ValueError, match="JSON object"):
+        parse_run_bundle_bytes(b"[]")
 
 
 def test_refresh_payment_advances_only_when_paypal_reports_paid():

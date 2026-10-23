@@ -39,3 +39,6 @@
 
 请通过 GitHub Issue 或仓库维护者邮箱私下报告潜在漏洞。不要在公开 Issue 中
 粘贴真实密钥、真实客户数据或可利用的支付凭据。
+
+完整的支付安全审计、历史风险模式映射和残余风险见
+[`docs/PAYMENT_SECURITY_AUDIT.md`](docs/PAYMENT_SECURITY_AUDIT.md)。

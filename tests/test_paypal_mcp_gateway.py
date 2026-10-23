@@ -57,4 +57,38 @@ def test_mcp_gateway_maps_tool_results():
         "send_invoice",
         "get_invoice",
     ]
+    assert client.calls[0][1]["idempotency_key"] == "mcp-test-0001"
+
+
+def test_mcp_write_errors_do_not_silently_fallback_to_rest():
+    class FailingClient:
+        def call_tool(self, name, arguments):
+            raise TimeoutError("MCP response lost after submission")
+
+    class FallbackSpy:
+        def __init__(self):
+            self.write_calls = 0
+
+        def create_invoice(self, request):
+            self.write_calls += 1
+            raise AssertionError("fallback write must not run")
+
+        def send_invoice(self, invoice_id):
+            self.write_calls += 1
+            raise AssertionError("fallback write must not run")
+
+    fallback = FallbackSpy()
+    gateway = McpPayPalGateway(FailingClient(), fallback=fallback)
+    request = CreateInvoiceRequest(
+        buyer_name="Buyer",
+        buyer_email="buyer@example.com",
+        amount=money("500", "USD"),
+        idempotency_key="mcp-error-test-0001",
+    )
+    with __import__("pytest").raises(TimeoutError):
+        gateway.create_invoice(request)
+    with __import__("pytest").raises(TimeoutError):
+        gateway.send_invoice("MCP-INV-1")
+
+    assert fallback.write_calls == 0
 

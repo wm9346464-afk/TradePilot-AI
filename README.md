@@ -247,7 +247,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 109 automated tests passing;
+- 119 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;
@@ -286,6 +286,7 @@ tests/                         Unit, integration and AppTest coverage
 - [Architecture](docs/TRUSTLOOP_ARCHITECTURE.md)
 - [Sandbox setup](docs/SANDBOX_SETUP.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
+- [Payment security audit](docs/PAYMENT_SECURITY_AUDIT.md)
 - [Demo script](docs/DEMO_SCRIPT.md)
 - [Judge guide](docs/JUDGE_GUIDE.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)

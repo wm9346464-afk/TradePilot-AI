@@ -29,6 +29,8 @@ def test_rest_gateway_maps_create_send_and_paid_status(monkeypatch):
             "total": 500.0,
             "currency": "USD",
             "payment_url": "https://sandbox.paypal.com/invoice/INV-1",
+            "buyer_email": "buyer@example.com",
+            "buyer_name": "Private Buyer",
         }
 
     monkeypatch.setattr(
@@ -40,16 +42,26 @@ def test_rest_gateway_maps_create_send_and_paid_status(monkeypatch):
     assert created.success is True
     assert created.invoice_id == "INV-1"
     assert created.amount.format() == "USD 500.00"
+    assert "buyer_email" not in created.raw_response
+    assert "buyer_name" not in created.raw_response
     assert captured["idempotency_key"] == "invoice-request-0001"
     assert captured["currency"] == "USD"
 
+    sent_capture = {}
+
+    def fake_send(invoice_id, idempotency_key=""):
+        sent_capture["invoice_id"] = invoice_id
+        sent_capture["idempotency_key"] = idempotency_key
+        return {"success": True}
+
     monkeypatch.setattr(
         "modules.trustloop.gateways.paypal_rest.send_invoice_api",
-        lambda invoice_id, idempotency_key="": {"success": True},
+        fake_send,
     )
     sent = gateway.send_invoice("INV-1")
     assert sent.success is True
     assert sent.status == "SENT"
+    assert sent_capture["idempotency_key"] == "trustloop-send-INV-1"
 
     monkeypatch.setattr(
         "modules.trustloop.gateways.paypal_rest.get_invoice_status_api",

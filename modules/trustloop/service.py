@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from contextlib import contextmanager
+from functools import wraps
 import os
+from threading import Lock
+from uuid import uuid4
 
 from modules.contract_checker import SAMPLE_CONTRACT
 
@@ -42,6 +46,18 @@ from .passport_signature import sign_passport
 from .store import RunStore
 
 
+def _serialized_payment_write(operation: str):
+    def decorator(method):
+        @wraps(method)
+        def wrapped(self, run_id: str, *args, **kwargs):
+            with self._operation_guard(run_id, operation):
+                return method(self, run_id, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 class TrustLoopService:
     def __init__(
         self,
@@ -70,6 +86,7 @@ class TrustLoopService:
         self._runs: dict[str, DealRun] = {}
         self._audits: dict[str, AuditLog] = {}
         self._negotiations: dict[str, NegotiationResult] = {}
+        self._operation_locks: dict[str, Lock] = {}
 
     def start_case(self, deal_input: DealInput) -> DealRun:
         deal = DealCase(
@@ -295,6 +312,7 @@ class TrustLoopService:
         self._save(run)
         return run
 
+    @_serialized_payment_write("approve_plan")
     def approve_plan(
         self,
         run_id: str,
@@ -331,6 +349,7 @@ class TrustLoopService:
         self._save(run)
         return run
 
+    @_serialized_payment_write("create_invoice")
     def create_invoice(
         self,
         run_id: str,
@@ -376,6 +395,7 @@ class TrustLoopService:
         self._save(run)
         return run
 
+    @_serialized_payment_write("send_invoice")
     def send_invoice(
         self,
         run_id: str,
@@ -975,6 +995,27 @@ class TrustLoopService:
         restore = getattr(self.paypal_gateway, "restore_run", None)
         if callable(restore):
             restore(run)
+
+    @contextmanager
+    def _operation_guard(self, run_id: str, operation: str):
+        lock_key = f"{run_id}:{operation}"
+        owner = uuid4().hex
+        local_lock = None
+        acquired = False
+        if self.store:
+            acquired = self.store.acquire_operation_lock(lock_key, owner, 300)
+        else:
+            local_lock = self._operation_locks.setdefault(lock_key, Lock())
+            acquired = local_lock.acquire(blocking=False)
+        if not acquired:
+            raise PolicyViolation("This financial operation is already in progress")
+        try:
+            yield
+        finally:
+            if self.store:
+                self.store.release_operation_lock(lock_key, owner)
+            elif local_lock is not None:
+                local_lock.release()
 
 
 def demo_deal_input() -> DealInput:

@@ -370,7 +370,7 @@ def test_paypal_create_success_send_failure_keeps_draft_for_retry(monkeypatch):
     monkeypatch.setattr(
         paypal_payment,
         "send_invoice_api",
-        lambda invoice_id: {"success": False, "error": "HTTP 500"},
+        lambda invoice_id, **kwargs: {"success": False, "error": "HTTP 500"},
     )
 
     result = create_and_send_invoice(
@@ -388,11 +388,54 @@ def test_paypal_create_success_send_failure_keeps_draft_for_retry(monkeypatch):
     assert result["retryable"] is True
     assert get_invoice_demo("INV-TEST-DRAFT")["status"] == "DRAFT"
 
-    monkeypatch.setattr(paypal_payment, "send_invoice_api", lambda invoice_id: {"success": True})
+    monkeypatch.setattr(
+        paypal_payment,
+        "send_invoice_api",
+        lambda invoice_id, **kwargs: {"success": True},
+    )
     retry = retry_send_invoice("INV-TEST-DRAFT", use_api=True)
     assert retry["invoice_id"] == "INV-TEST-DRAFT"
     assert retry["status"] == "SENT"
     assert get_invoice_demo("INV-TEST-DRAFT")["status"] == "SENT"
+
+
+def test_legacy_invoice_creation_retries_with_a_stable_idempotency_key(monkeypatch):
+    keys = []
+
+    def fake_create(*args, **kwargs):
+        keys.append(kwargs["idempotency_key"])
+        return {
+            "success": True,
+            "invoice_id": "INV-STABLE-KEY",
+            "invoice_number": "INV-STABLE-NO",
+            "status": "DRAFT",
+            "total": 10.0,
+            "currency": "USD",
+        }
+
+    monkeypatch.setattr(paypal_payment, "is_paypal_configured", lambda: True)
+    monkeypatch.setattr(paypal_payment, "create_invoice_api", fake_create)
+    monkeypatch.setattr(
+        paypal_payment,
+        "send_invoice_api",
+        lambda invoice_id, idempotency_key="": {"success": True},
+    )
+
+    kwargs = dict(
+        payment_type="service_fee",
+        buyer_name="Buyer",
+        buyer_email="buyer@example.com",
+        amount=10.0,
+        currency="USD",
+        contract_id="CONTRACT-1",
+        use_api=True,
+    )
+    assert create_and_send_invoice(**kwargs)["success"] is True
+    assert create_and_send_invoice(**kwargs)["success"] is True
+
+    assert len(keys) == 2
+    assert keys[0] == keys[1]
+    assert keys[0].startswith("legacy-invoice-")
 
 
 def test_paypal_api_without_config_does_not_call_network(monkeypatch):

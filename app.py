@@ -673,7 +673,12 @@ elif page == _t("sidebar.page_onboarding"):
                         "中": "#f5a623", "Medium": "#f5a623", "medium": "#f5a623",
                         "低": "#009c48", "Low": "#009c48", "low": "#009c48",
                     }.get(severity, "#6c7378")
-                    st.markdown(f"- <span style='color:{sev_color};font-weight:600;'>[{issue.get('type','')}]</span> {issue.get('description','')}", unsafe_allow_html=True)
+                    st.markdown(
+                        f"- <span style='color:{sev_color};font-weight:600;'>"
+                        f"[{html.escape(str(issue.get('type', '')))}]</span> "
+                        f"{html.escape(str(issue.get('description', '')))}",
+                        unsafe_allow_html=True,
+                    )
             else:
                 st.success(_t("contract.no_issues"))
 

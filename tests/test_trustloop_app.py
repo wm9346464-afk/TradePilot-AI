@@ -73,6 +73,21 @@ def test_trustloop_access_password_gate(monkeypatch):
     assert any(item.label == "Review deal & build ladder" for item in at.button)
 
 
+def test_rest_paypal_mode_requires_access_password(monkeypatch):
+    monkeypatch.delenv("APP_PASSWORD", raising=False)
+    monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
+    monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "rest")
+    at = AppTest.from_file(str(APP_PATH)).run(timeout=30)
+
+    assert not at.exception
+    assert any(
+        "require APP_PASSWORD" in item.value for item in at.error
+    )
+    assert not any(
+        item.label == "Review deal & build ladder" for item in at.button
+    )
+
+
 def test_trustloop_ui_can_build_a_eur_settlement_plan(monkeypatch):
     monkeypatch.setenv("TRUSTLOOP_USE_LLM", "false")
     monkeypatch.setenv("TRUSTLOOP_PAYPAL_BACKEND", "fake")

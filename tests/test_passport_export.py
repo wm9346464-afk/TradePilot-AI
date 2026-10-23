@@ -11,6 +11,7 @@ def test_passport_html_contains_verified_evidence():
     document = render_passport_html(run.passport)
 
     assert "TradePilot Trust Passport" in document
+    assert len(run.passport.passport_id) == 35
     assert run.passport.passport_id in document
     assert run.passport.audit_head_hash in document
     assert "Payments" in document

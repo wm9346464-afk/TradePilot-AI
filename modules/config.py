@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 from typing import Dict
+from urllib.parse import urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -43,6 +44,20 @@ def _apply_secret_mapping(secrets: dict) -> None:
             continue
         if isinstance(value, (str, int, float, bool)):
             os.environ[str(key)] = str(value)
+
+
+def _is_secure_service_url(value: str) -> bool:
+    try:
+        parsed = urlparse(str(value or ""))
+    except ValueError:
+        return False
+    if parsed.scheme == "https" and parsed.hostname:
+        return True
+    return parsed.scheme == "http" and parsed.hostname in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }
 
 
 def _get_env(name: str) -> str:
@@ -159,7 +174,7 @@ def is_llm_config_valid() -> bool:
     key = cfg["api_key"]
     if not _is_filled(key) or len(key) < 16:
         return False
-    if not cfg["api_url"].startswith(("http://", "https://")):
+    if not _is_secure_service_url(cfg["api_url"]):
         return False
     return _is_filled(cfg["model_name"])
 
@@ -201,7 +216,7 @@ def get_signal_config_status(lang: str = "zh") -> Dict[str, object]:
             "usable": False,
             "reason": "SIGNAL_API_URL not configured, using Demo Signal Provider." if en else "未配置 SIGNAL_API_URL，使用 Demo Signal Provider。",
         }
-    if not api_url.startswith(("http://", "https://")):
+    if not _is_secure_service_url(api_url):
         return {
             "state": "unverified",
             "label": "Filled (unverified)" if en else "已填写配置（未验证）",

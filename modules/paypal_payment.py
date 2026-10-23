@@ -22,6 +22,7 @@ PayPal API使用的是沙箱环境（Sandbox），所有交易都是虚拟的，
 import time
 import uuid
 import logging
+import hashlib
 import requests
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
@@ -134,6 +135,29 @@ def _request_with_retry(method: str, url: str, **kwargs):
 def _to_decimal(value) -> Decimal:
     """安全转换为Decimal，保留两位小数"""
     return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _stable_invoice_idempotency_key(
+    *,
+    payment_type: str,
+    buyer_name: str,
+    buyer_email: str,
+    amount,
+    currency: str,
+    contract_id: str,
+) -> str:
+    intent = "|".join(
+        (
+            str(payment_type).strip(),
+            str(buyer_name).strip().lower(),
+            str(buyer_email).strip().lower(),
+            str(_to_decimal(amount)),
+            str(currency).strip().upper(),
+            str(contract_id).strip(),
+        )
+    )
+    digest = hashlib.sha256(intent.encode("utf-8")).hexdigest()
+    return f"legacy-invoice-{digest}"
 
 
 def get_merchant_email() -> str:
@@ -649,6 +673,7 @@ def create_and_send_invoice(
     use_api: bool = True,
     allow_demo_fallback: bool = False,
     lang: str = "zh",
+    idempotency_key: str = "",
 ) -> dict:
     """
     创建并发送发票（主入口）
@@ -707,6 +732,14 @@ def create_and_send_invoice(
             currency=currency,
             contract_id=contract_id,
             payment_type=payment_type,
+            idempotency_key=idempotency_key or _stable_invoice_idempotency_key(
+                payment_type=payment_type,
+                buyer_name=buyer_name,
+                buyer_email=buyer_email,
+                amount=amount,
+                currency=currency,
+                contract_id=contract_id,
+            ),
         )
 
         if not invoice.get("success"):
@@ -718,7 +751,10 @@ def create_and_send_invoice(
         _store_invoice(invoice)
 
         # 【修复5】检查发送结果，失败则返回错误
-        send_result = send_invoice_api(invoice["invoice_id"])
+        send_result = send_invoice_api(
+            invoice["invoice_id"],
+            idempotency_key=f"trustloop-send-{invoice['invoice_id']}",
+        )
         if not send_result.get("success"):
             en = lang == "en"
             return {
@@ -760,7 +796,10 @@ def retry_send_invoice(invoice_id: str, use_api: bool = True, lang: str = "zh") 
                 "error": "PayPal API not fully configured" if en else "PayPal API未完整配置",
                 "mode": "NOT_CONFIGURED",
             }
-        send_result = send_invoice_api(invoice_id)
+        send_result = send_invoice_api(
+            invoice_id,
+            idempotency_key=f"trustloop-send-{invoice_id}",
+        )
         if not send_result.get("success"):
             return {
                 "success": False,

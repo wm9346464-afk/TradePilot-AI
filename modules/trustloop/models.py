@@ -248,7 +248,7 @@ class SettlementRecord(StrictModel):
 
 
 class TrustPassport(StrictModel):
-    passport_id: str = Field(default_factory=lambda: f"TP-{uuid4().hex[:12].upper()}")
+    passport_id: str = Field(default_factory=lambda: f"TP-{uuid4().hex.upper()}")
     schema_version: str = "1.1"
     run_id: str
     deal_id: str
