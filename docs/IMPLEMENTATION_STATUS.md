@@ -27,7 +27,7 @@ Legend:
 | 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths, replay, language switch, multi-currency selection and resume-by-ID implemented; hosted UI testing remains external. |
 | 13. Security and privacy | DONE | Secret isolation, human approval, amount/currency limits, prompt-injection matrix, rate limiting, public verification, issuer signatures and secret scan implemented. |
 | 14. Session and persistence | DONE | SQLite run/audit/negotiation/invoice index, cross-process resume, replay export/restore and tamper validation implemented. |
-| 15. Testing | PARTIAL | 77 tests pass; CI and secret scan exist. Real REST UI payment rehearsal remains a release check. |
+| 15. Testing | PARTIAL | 87 tests pass; CI and secret scan exist. Real REST UI payment rehearsal remains a release check. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 

@@ -133,6 +133,26 @@ def test_runtime_service_enforces_configured_invoice_cap(monkeypatch):
         service.propose_plan(run.run_id, invoice_currency="USD")
 
 
+def test_service_eur_defaults_use_the_same_safe_amounts_as_the_ui(monkeypatch):
+    for name in (
+        "TRUSTLOOP_SAMPLE_AMOUNT",
+        "TRUSTLOOP_TRIAL_AMOUNT",
+        "TRUSTLOOP_DEPOSIT_AMOUNT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    service = build_demo_service()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    run = service.propose_plan(run.run_id, invoice_currency="EUR")
+
+    assert run.plan is not None
+    assert [item.amount.format() for item in run.plan.milestones] == [
+        "EUR 500.00",
+        "EUR 5,000.00",
+        "EUR 9,000.00",
+    ]
+
+
 class FakeFxResponse:
     def __init__(self, payload):
         self._payload = payload

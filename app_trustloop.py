@@ -183,10 +183,13 @@ if linked_run_id and "trustloop_run" not in st.session_state:
         st.session_state["trustloop_service"] = linked_service
         st.session_state["trustloop_run"] = linked_run
         st.session_state["trustloop_events"] = linked_events
+        st.session_state.pop("trustloop_negotiation", None)
 
 with st.sidebar:
     st.markdown(f"### {tx('demo_controls')}")
     st.caption(tx("safe_controls"))
+    if not os.getenv("TRUSTLOOP_STORE_PATH", "").strip():
+        st.caption(tx("store_required"))
     if st.button(tx("reset"), use_container_width=True):
         for key in ("trustloop_service", "trustloop_run", "trustloop_events", "trustloop_negotiation"):
             st.session_state.pop(key, None)
@@ -209,6 +212,7 @@ with st.sidebar:
                 st.session_state["trustloop_service"] = saved_service
                 st.session_state["trustloop_run"] = saved_run
                 st.session_state["trustloop_events"] = saved_events
+                st.session_state.pop("trustloop_negotiation", None)
                 st.query_params["run_id"] = saved_run.run_id
                 st.rerun()
     passport_lookup_id = st.text_input(
@@ -238,6 +242,7 @@ with st.sidebar:
                 st.session_state["trustloop_service"] = replay_service
                 st.session_state["trustloop_run"] = replay_run
                 st.session_state["trustloop_events"] = replay_service.get_audit_events(replay_run.run_id)
+                st.session_state.pop("trustloop_negotiation", None)
                 st.rerun()
         except Exception as exc:
             st.error(f"Replay bundle rejected: {type(exc).__name__}: {exc}")
@@ -376,9 +381,6 @@ if run_demo:
             run = service.propose_plan(
                 run.run_id,
                 invoice_currency=selected_invoice_currency,
-                sample_amount=os.getenv("TRUSTLOOP_SAMPLE_AMOUNT", "500"),
-                trial_amount=os.getenv("TRUSTLOOP_TRIAL_AMOUNT", "5000"),
-                deposit_amount=os.getenv("TRUSTLOOP_DEPOSIT_AMOUNT", "9000"),
             )
         except Exception as exc:
             st.error(tx("plan_error", error=f"{type(exc).__name__}: {exc}"))
@@ -611,7 +613,15 @@ with center:
             st.warning(warning)
         with st.expander(tx("view_proposal")):
             st.json(run.agent_proposal.model_dump(mode="json"))
-    if service and run.plan:
+    if (
+        service
+        and run.plan
+        and run.state not in {
+            DealState.PASSPORT_ISSUED,
+            DealState.FAILED,
+            DealState.CANCELLED,
+        }
+    ):
         if st.button(tx("simulate_negotiation"), use_container_width=True):
             try:
                 rate_limiter["negotiation"].check("simulate_negotiation")
@@ -621,6 +631,8 @@ with center:
             except RateLimitExceeded as exc:
                 st.error(str(exc))
         negotiation = st.session_state.get("trustloop_negotiation")
+        if negotiation is None and service:
+            negotiation = service.get_negotiation(run.run_id)
         if negotiation:
             st.markdown(f"**{tx('negotiation_result')}** {negotiation.summary}")
             with st.expander(tx("negotiation_turns"), expanded=True):
@@ -706,9 +718,12 @@ with right:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if passport:
-        st.markdown(
-            f"[{tx('public_verify')}](?verify={passport.passport_id})"
-        )
+        if service and service.store:
+            st.markdown(
+                f"[{tx('public_verify')}](?verify={passport.passport_id})"
+            )
+        else:
+            st.caption(tx("store_required"))
         verification = service.verify_trust_passport(run.run_id) if service else None
         if verification and verification.valid:
             st.success(tx("verified"))

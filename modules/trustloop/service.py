@@ -151,11 +151,26 @@ class TrustLoopService:
         run_id: str,
         *,
         invoice_currency: str = "USD",
-        sample_amount: Decimal | int | str = "500",
-        trial_amount: Decimal | int | str = "5000",
-        deposit_amount: Decimal | int | str = "10000",
+        sample_amount: Decimal | int | str | None = None,
+        trial_amount: Decimal | int | str | None = None,
+        deposit_amount: Decimal | int | str | None = None,
     ) -> DealRun:
         run = self._require_run(run_id, DealState.RISK_ASSESSED)
+        resolved_sample_amount = (
+            sample_amount
+            if sample_amount is not None
+            else os.getenv("TRUSTLOOP_SAMPLE_AMOUNT", "500")
+        )
+        resolved_trial_amount = (
+            trial_amount
+            if trial_amount is not None
+            else os.getenv("TRUSTLOOP_TRIAL_AMOUNT", "5000")
+        )
+        resolved_deposit_amount = (
+            deposit_amount
+            if deposit_amount is not None
+            else os.getenv("TRUSTLOOP_DEPOSIT_AMOUNT", "9000")
+        )
         decision = self.currency_policy.validate_invoice_currency(
             invoice_currency,
             run.deal.seller.supported_currencies,
@@ -177,9 +192,9 @@ class TrustLoopService:
         proposal = self.agent_planner.propose(
             run,
             invoice_currency=selected_currency,
-            sample_amount=sample_amount,
-            trial_amount=trial_amount,
-            deposit_amount=deposit_amount,
+            sample_amount=resolved_sample_amount,
+            trial_amount=resolved_trial_amount,
+            deposit_amount=resolved_deposit_amount,
         )
         proposal = self._ensure_required_stage_tools(proposal)
         proposed_currencies = {
@@ -238,11 +253,14 @@ class TrustLoopService:
         )
         run = self.state_machine.transition(run, "PLAN_CREATED")
         run = self.state_machine.transition(run, "APPROVAL_REQUESTED")
+        planner_actor = (
+            "LLMPlanner" if proposal.planner_type == "LLM" else "RuleBasedPlanner"
+        )
         self._audit(
             run_id,
             "AGENT_PROPOSAL_CREATED",
             "AGENT",
-            "RuleBasedPlanner",
+            planner_actor,
             {
                 "decision": proposal.decision,
                 "planner_type": proposal.planner_type,
@@ -256,7 +274,7 @@ class TrustLoopService:
             run_id,
             "PLAN_PROPOSED",
             "SYSTEM",
-            "RuleBasedPlanner",
+            planner_actor,
             {
                 "plan_id": plan.plan_id,
                 "contract_currency": run.deal.contract_value.currency,
@@ -666,6 +684,7 @@ class TrustLoopService:
         if self.store:
             self.store.save_run(parsed.run)
             self.store.replace_audit_events(parsed.run.run_id, parsed.events)
+        self._restore_gateway_state(parsed.run)
         return parsed.run
 
     def verify_trust_passport(self, run_id: str):
@@ -734,6 +753,12 @@ class TrustLoopService:
         buyer_max_initial_payment: str | int | None = None,
     ) -> NegotiationResult:
         run = self.get_run(run_id)
+        if run.state in {
+            DealState.PASSPORT_ISSUED,
+            DealState.FAILED,
+            DealState.CANCELLED,
+        }:
+            raise PolicyViolation("Completed or closed runs are read-only")
         result = negotiate(
             run,
             max_turns=max_turns,
@@ -882,6 +907,7 @@ class TrustLoopService:
             raise KeyError(f"Unknown run_id: {run_id}")
         if persisted_run is not None:
             self._runs.setdefault(run_id, persisted_run)
+            self._restore_gateway_state(persisted_run)
         if run_id not in self._audits:
             try:
                 self._audits[run_id] = (
@@ -904,6 +930,11 @@ class TrustLoopService:
             )
         except ValueError as exc:
             raise PolicyViolation(f"Persisted audit chain is invalid: {exc}") from exc
+
+    def _restore_gateway_state(self, run: DealRun) -> None:
+        restore = getattr(self.paypal_gateway, "restore_run", None)
+        if callable(restore):
+            restore(run)
 
 
 def demo_deal_input() -> DealInput:

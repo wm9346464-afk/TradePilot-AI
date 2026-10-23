@@ -33,9 +33,11 @@ def verify_passport(
         "amounts_positive": all(item.amount.amount > 0 for item in passport.settlements),
     }
     try:
-        audit_log = AuditLog.from_events(passport.run_id, events)
+        AuditLog.from_events(passport.run_id, events)
         checks["audit_chain_valid"] = True
-        checks["head_hash_matches"] = audit_log.head_hash == passport.audit_head_hash
+        checks["head_hash_matches"] = any(
+            event.event_hash == passport.audit_head_hash for event in events
+        )
     except ValueError:
         checks["audit_chain_valid"] = False
     checks["has_paid_settlement"] = any(

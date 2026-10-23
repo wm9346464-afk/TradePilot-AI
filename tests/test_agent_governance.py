@@ -12,7 +12,7 @@ from modules.trustloop.agent.planner import RuleBasedPlanner
 from modules.trustloop.agent.negotiation import negotiate
 from modules.trustloop.agent.executor import AgentToolExecutionError, AgentToolExecutor
 from modules.trustloop.enums import DealState
-from modules.trustloop.agent.planner import RuleBasedPlanner
+from modules.trustloop.policy import PolicyViolation
 
 
 def test_rule_based_planner_returns_structured_proposal():
@@ -178,4 +178,41 @@ def test_service_audits_negotiation_result():
         event.event_type == "NEGOTIATION_COMPLETED"
         for event in service.get_audit_events(run.run_id)
     )
+
+
+def test_completed_run_rejects_post_passport_negotiation():
+    service = build_demo_service()
+    run = service.run_full_demo(demo_deal_input())
+
+    with pytest.raises(PolicyViolation, match="read-only"):
+        service.simulate_negotiation(run.run_id)
+
+
+def test_audit_records_the_actual_llm_planner_actor():
+    class LlmPlannerStub:
+        def propose(self, run, **kwargs):
+            proposal = RuleBasedPlanner().propose(run, **kwargs)
+            return proposal.model_copy(update={"planner_type": "LLM"})
+
+    service = build_demo_service()
+    service.agent_planner = LlmPlannerStub()
+    run = service.start_case(demo_deal_input())
+    run = service.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    service.propose_plan(run.run_id)
+
+    proposal_event = next(
+        event
+        for event in service.get_audit_events(run.run_id)
+        if event.event_type == "AGENT_PROPOSAL_CREATED"
+    )
+    plan_event = next(
+        event
+        for event in service.get_audit_events(run.run_id)
+        if event.event_type == "PLAN_PROPOSED"
+    )
+    assert proposal_event.actor_id == "LLMPlanner"
+    assert plan_event.actor_id == "LLMPlanner"
 

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
 
-from ..models import PaymentResult
+from ..models import DealRun, PaymentResult
 from .paypal import CreateInvoiceRequest, PayPalGatewayError
 
 
@@ -87,6 +87,52 @@ class FakePayPalGateway:
         record["paid_at"] = datetime.now(timezone.utc)
         record["transaction_id"] = f"FAKE-TXN-{uuid4().hex[:12].upper()}"
         return self._to_result(record)
+
+    def restore_run(self, run: DealRun) -> None:
+        """Rebuild deterministic gateway state for a run loaded from storage."""
+        milestones = run.plan.milestones if run.plan else []
+        for milestone in milestones:
+            if not milestone.invoice_id:
+                continue
+            invoice = next(
+                (
+                    item
+                    for item in reversed(run.invoices)
+                    if item.invoice_id == milestone.invoice_id
+                ),
+                None,
+            )
+            status_map = {
+                "INVOICE_DRAFT": "DRAFT",
+                "INVOICE_SENT": "SENT",
+                "AWAITING_PAYMENT": "SENT",
+                "PAID": "PAID",
+                "REFUNDED": "REFUNDED",
+                "FAILED": "CANCELLED",
+            }
+            status = status_map.get(milestone.status.value, "DRAFT")
+            self._invoices[milestone.invoice_id] = {
+                "invoice_id": milestone.invoice_id,
+                "invoice_number": (
+                    invoice.invoice_number
+                    if invoice and invoice.invoice_number
+                    else f"TP-DEMO-{milestone.sequence:04d}"
+                ),
+                "status": status,
+                "amount": invoice.amount if invoice and invoice.amount else milestone.amount,
+                "buyer_name": run.deal.buyer.name,
+                "buyer_email": run.deal.buyer.email,
+                "contract_id": run.deal.deal_id,
+                "payment_type": "trust_milestone",
+                "payment_url": (
+                    invoice.payment_url
+                    if invoice and invoice.payment_url
+                    else f"https://example.invalid/trustloop/{milestone.invoice_id}"
+                ),
+                "created_at": invoice.paid_at if invoice and invoice.paid_at else datetime.now(timezone.utc),
+                "paid_at": invoice.paid_at if invoice else None,
+                "transaction_id": milestone.payment_id,
+            }
 
     def _to_result(self, record: dict) -> PaymentResult:
         return PaymentResult(

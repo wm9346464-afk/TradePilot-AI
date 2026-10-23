@@ -70,3 +70,43 @@ def test_audit_store_refuses_different_content_at_existing_sequence(tmp_path):
 
     with pytest.raises(StoreConflict):
         store.append_audit_event(conflicting)
+
+
+def test_sqlite_connections_close_so_the_database_can_be_removed(tmp_path):
+    database = tmp_path / "removable.db"
+    store = SQLiteRunStore(database)
+    service = build_runtime_service(
+        paypal_backend="fake",
+        use_llm=False,
+        store=store,
+    )
+    run = service.start_case(demo_deal_input())
+    assert store.load_run(run.run_id) is not None
+
+    database.unlink()
+
+    assert database.exists() is False
+
+
+def test_fake_paypal_invoice_state_is_rehydrated_after_restart(tmp_path):
+    database = tmp_path / "fake-resume.db"
+    first = _service(database)
+    run = first.start_case(demo_deal_input())
+    run = first.review_contract(
+        run.run_id,
+        __import__("modules.contract_checker", fromlist=["SAMPLE_CONTRACT"]).SAMPLE_CONTRACT,
+    )
+    run = first.propose_plan(run.run_id)
+    run = first.approve_plan(run.run_id)
+    run = first.create_invoice(run.run_id)
+    invoice_id = run.plan.milestones[0].invoice_id
+    assert invoice_id
+
+    second = _service(database)
+    resumed = second.get_run(run.run_id)
+    resumed = second.send_invoice(resumed.run_id)
+    resumed = second.simulate_payment(resumed.run_id)
+    resumed = second.complete_milestone(resumed.run_id)
+
+    assert resumed.plan.milestones[0].invoice_id == invoice_id
+    assert resumed.plan.milestones[0].status.value == "PAID"

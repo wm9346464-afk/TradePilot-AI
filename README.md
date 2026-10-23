@@ -247,7 +247,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 77 automated tests passing;
+- 87 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;

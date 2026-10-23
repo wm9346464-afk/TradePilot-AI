@@ -43,3 +43,22 @@ def test_passport_signature_rejects_the_wrong_issuer_key():
         run.passport,
         "different-signing-key-with-32-characters",
     ) is False
+
+
+def test_passport_remains_valid_when_later_audit_events_are_appended():
+    service = build_demo_service()
+    service.passport_signing_key = SIGNING_KEY
+    run = service.run_full_demo(demo_deal_input())
+    service._audit(
+        run.run_id,
+        "POST_ISSUE_NOTE",
+        "SYSTEM",
+        "Test",
+        {"note": "supplemental audit event"},
+    )
+    service._save(service.get_run(run.run_id))
+
+    result = service.verify_trust_passport(run.run_id)
+
+    assert result.valid is True
+    assert result.checks["head_hash_matches"] is True
