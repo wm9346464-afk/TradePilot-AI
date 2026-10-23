@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
+import os
 
 from modules.contract_checker import SAMPLE_CONTRACT
 
@@ -679,7 +680,7 @@ class TrustLoopService:
 def demo_deal_input() -> DealInput:
     return DealInput(
         buyer_name="Northbridge Infrastructure Pte. Ltd.",
-        buyer_email="buyer@example.com",
+        buyer_email=os.getenv("PAYPAL_SANDBOX_BUYER_EMAIL", "buyer@example.com"),
         buyer_country="SG",
         seller_name="TradePilot Demo Steel Seller",
         seller_country="CN",
