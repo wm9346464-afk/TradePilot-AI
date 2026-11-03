@@ -1,4 +1,4 @@
-# TrustLoop Implementation Status
+﻿# TrustLoop Implementation Status
 
 Last updated: 2026-11-03
 
@@ -13,7 +13,7 @@ Legend:
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| 1. Competition and repository foundation | PARTIAL | Local branch and tags exist; CI added. GitHub push, repository homepage/topics and final release remain EXTERNAL. |
+| 1. Competition and repository foundation | DONE | Public repository at https://github.com/wm9346464-afk/TradePilot-AI with the TrustLoop branch on main, live demo URL and topics in About. A GitHub Actions workflow is staged locally but stays off the remote: the current push token has only `repo` scope, and GitHub rejects workflow files from it. |
 | 2. P0 fixes | DONE | Onboarding notification call, sample contract state, Webhook wording, regression tests and test isolation fixed. |
 | 3. Domain models | DONE | Money, DealRun, Risk, Ladder, Approval, PaymentResult, TrustPassport and AuditEvent implemented. |
 | 4. State machine and audit | DONE | Deterministic transitions, idempotency, hash chain, SQLite checkpoints and cross-process resume implemented and tested. |
@@ -28,13 +28,13 @@ Legend:
 | 13. Security and privacy | DONE | Secret isolation, human approval, amount/currency limits, prompt-injection matrix, rate limiting, public verification, issuer signatures and secret scan implemented. |
 | 14. Session and persistence | DONE | SQLite run/audit/negotiation/invoice index, cross-process resume, replay export/restore and tamper validation implemented. |
 | 15. Testing | PARTIAL | 122 tests pass; crash-point recovery, concurrency conflicts, duplicate-write idempotency, paid-amount matching and replay isolation are covered. Real REST UI payment rehearsal remains a release check. |
-| 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
+| 16. Online Demo | DONE | Live at https://tradepilot-trustloop.streamlit.app (branch main, Python 3.12, demo gateway). Streamlit Community Cloud storage is ephemeral; render.yaml carries the persistent-disk variant. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 
 ## Release blockers
 
-1. Push the reviewed branch to GitHub.
-2. Deploy the hosted demo and configure platform Secrets.
+1. ~~Push the reviewed branch to GitHub.~~ Done.
+2. ~~Deploy the hosted demo and configure platform Secrets.~~ Done: https://tradepilot-trustloop.streamlit.app
 3. Run one complete REST Deal Room payment test through the UI.
 4. Record and upload the under-three-minute demo video.
 5. Complete the Devpost submission.
@@ -44,4 +44,7 @@ Legend:
 - Live PayPal MCP client verification with the official transport.
 - PDF-specific report generation beyond printable HTML.
 - Optional LLM-to-LLM negotiation with the same hard policy envelope.
+
+
+
 
