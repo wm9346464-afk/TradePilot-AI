@@ -17,6 +17,15 @@ from modules.config import (
 )
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
+from modules.trustloop.evidence import (
+    EVENT_COLUMNS,
+    MILESTONE_COLUMNS,
+    event_rows,
+    exposure_bar_html,
+    exposure_summary,
+    milestone_rows,
+    to_frame,
+)
 from modules.trustloop.security import (
     InMemoryRateLimiter,
     RateLimitExceeded,
@@ -33,6 +42,69 @@ def _query_value(name: str) -> str:
     if isinstance(value, (list, tuple)):
         return str(value[0]).strip() if value else ""
     return str(value or "").strip()
+
+
+_GRID_WIDTHS = {
+    "stage": 70,
+    "status": 116,
+    "milestone": 200,
+    "amount": 132,
+    "approved": 132,
+    "approved_by": 146,
+    "invoice": 152,
+    "transaction": 214,
+    "unlock_condition": 260,
+    "sequence": 70,
+    "event_type": 216,
+    "actor": 236,
+    "detail": 320,
+    "hash": 172,
+    "at": 178,
+}
+
+
+
+def _render_evidence_grid(
+    frame,
+    columns,
+    *,
+    height: int,
+    quick_filter: str = "",
+    status_column: str | None = None,
+) -> None:
+    """Render one AG Grid table, degrading to a plain dataframe without the component."""
+
+    try:
+        from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+    except Exception:
+        st.dataframe(frame, use_container_width=True, hide_index=True)
+        return
+
+    builder = GridOptionsBuilder.from_dataframe(frame)
+    builder.configure_default_column(
+        sortable=True, filter=True, resizable=True, headerClass="tp-grid-header"
+    )
+    builder.configure_grid_options(quickFilterText=quick_filter, suppressSizeToFit=False)
+    for field, header in columns.items():
+        options = {
+            "header_name": header,
+            "width": _GRID_WIDTHS.get(field, 168),
+        }
+        if status_column and field == status_column:
+            options["cellStyle"] = {"fontWeight": "700"}
+        elif field in {"stage", "sequence"}:
+            options["pinned"] = "left"
+        builder.configure_column(field, **options)
+
+    AgGrid(
+        frame,
+        gridOptions=builder.build(),
+        height=height,
+        theme="streamlit",
+        fit_columns_on_grid_load=False,
+        update_mode=GridUpdateMode.NO_UPDATE,
+        key=f"evidence-{status_column or 'grid'}-{len(frame)}",
+    )
 
 
 def _llm_runtime() -> tuple[bool, dict | None]:
@@ -466,6 +538,15 @@ st.markdown(
     .tp-step.is-paid { border-color: #b7dfc9; box-shadow: inset 0 3px 0 var(--pp-good), 0 4px 16px rgba(16, 24, 40, 0.05); }
     .tp-step.is-ready { border-color: #b9d8f2; box-shadow: inset 0 3px 0 var(--pp-blue), 0 4px 16px rgba(16, 24, 40, 0.05); }
     .tp-step.is-locked { opacity: 0.72; }
+    .tp-exp-bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden;
+        background: #e8eef6; margin: 10px 0 8px 0; }
+    .tp-exp-seg { display: block; height: 100%; }
+    .tp-exp-settled { background: var(--pp-good); }
+    .tp-exp-approved { background: var(--pp-blue); }
+    .tp-exp-open { background: #cfd8e3; }
+    .tp-exp-legend { display: flex; gap: 18px; font-size: 12px; color: var(--pp-muted);
+        margin-bottom: 8px; flex-wrap: wrap; }
+    .tp-exp-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -985,6 +1066,31 @@ for event in events:
         </div>""",
         unsafe_allow_html=True,
     )
+
+st.markdown("---")
+st.markdown(f"### {tx('evidence_console')}")
+st.caption(tx("evidence_console_hint"))
+_exposure = exposure_summary(run)
+st.markdown(tx("console_exposure_caption"))
+st.markdown(exposure_bar_html(_exposure), unsafe_allow_html=True)
+_console_query = st.text_input(tx("console_filter"), key="trustloop_console_filter")
+
+st.markdown(f"**{tx('console_milestones')}**")
+_render_evidence_grid(
+    to_frame(milestone_rows(run), MILESTONE_COLUMNS),
+    MILESTONE_COLUMNS,
+    height=182,
+    quick_filter=_console_query,
+    status_column="status",
+)
+
+st.markdown(f"**{tx('console_events')}**")
+_render_evidence_grid(
+    to_frame(event_rows(events), EVENT_COLUMNS),
+    EVENT_COLUMNS,
+    height=360,
+    quick_filter=_console_query,
+)
 
 if run.approvals:
     with st.expander(tx("approval_records")):

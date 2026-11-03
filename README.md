@@ -25,6 +25,12 @@ deployment's policy envelope.*
 *After three verified demo payments: settlement records per milestone, the audit
 chain, and the Trust Passport integrity check.*
 
+![Evidence console](docs/images/evidence-console.png)
+
+*The AG Grid evidence console: settled-versus-approved exposure, the milestone grid
+joining approvals to PayPal invoices and settlements, and the audit hash chain —
+sortable, filterable and exportable in place.*
+
 ---
 
 ## The problem
@@ -81,6 +87,9 @@ The system combines:
 - **Public verification:** a stored Passport can be checked from a public verification view.
 - **Issuer signatures:** configured deployments sign Passport evidence with HMAC-SHA256.
 - **Bilingual Deal Room:** English and Chinese flows cover the primary operator experience.
+- **AG Grid evidence console:** the milestone, approval, invoice and audit evidence is
+  projected into two sortable AG Grid tables with quick filter and CSV export, built only
+  from the run state the Trust Passport is issued from.
 - **Bring your own model:** a visitor can paste any OpenAI-compatible endpoint and key
   in the sidebar. The override lives in that browser session only — it is never
   written to disk, the audit log or a Trust Passport, and the endpoint must be

@@ -10,3 +10,4 @@ requests==2.33.0        # HTTP请求（PayPal API、大模型API）
 python-dotenv==1.2.2    # 环境变量管理（存储API密钥，可选但推荐）
 pydantic==2.12.3        # 领域模型、结构化输出和 schema 校验
 pytest==9.1.1           # 测试框架（Demo与集成回归测试）
+streamlit-aggrid==1.2.1.post2  # AG Grid 表格组件（证据控制台）
