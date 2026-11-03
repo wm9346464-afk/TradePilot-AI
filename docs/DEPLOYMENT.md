@@ -1,5 +1,8 @@
 # TradePilot TrustLoop Deployment
 
+Current public deployment: <https://tradepilot-trustloop.streamlit.app> on Streamlit
+Community Cloud (branch `main`, file `app_trustloop.py`, Python 3.12).
+
 The safest public judge demo uses the deterministic Fake PayPal gateway and the
 real configured LLM. Real PayPal REST execution remains available for a private
 Sandbox rehearsal, but judges should not be asked to log in to a personal
@@ -78,6 +81,14 @@ Public Passport verification then works for the life of the container and stops
 working after a restart. Attach a paid disk at `/var/data`, set
 `TRUSTLOOP_STORE_PATH=/var/data/trustloop.db`, and verification links become
 durable.
+
+## Live deployment checklist
+
+- Secrets set on the host: `TRUSTLOOP_PAYPAL_BACKEND`, `TRUSTLOOP_USE_LLM`,
+  `FX_PROVIDER`, `TRUSTLOOP_STORE_PATH`, `TRUSTLOOP_PASSPORT_SIGNING_KEY`,
+  `LLM_API_URL`, `LLM_MODEL_NAME`, `LLM_API_KEY`.
+- Without `LLM_API_KEY` the Deal Room still works: the Agent plan panel shows
+  `RULE_BASED` and a configuration warning instead of hiding the fallback.
 
 ## Optional Webhook service
 

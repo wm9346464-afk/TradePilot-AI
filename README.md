@@ -2,6 +2,9 @@
 
 > **An agentic trust workflow for first-time cross-border B2B trade.**
 
+**Live demo:** <https://tradepilot-trustloop.streamlit.app> — hosted on Streamlit Community Cloud with the deterministic
+demo gateway, so judges can run the whole flow without a PayPal login or any setup.
+
 [![PayPal AI Hackathon 2026](https://img.shields.io/badge/PayPal%20AI%20Hackathon-2026-003087.svg)](https://paypalaihackathon.devpost.com/)
 [![Python](https://img.shields.io/badge/Python-3.10--3.12-3776AB.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.54.0-FF4B4B.svg)](https://streamlit.io/)
@@ -292,7 +295,9 @@ tests/                         Unit, integration and AppTest coverage
 
 ## Current limitations
 
-- The public demo is not yet deployed to a permanent hosted URL.
+- The public demo runs at <https://tradepilot-trustloop.streamlit.app>. Streamlit Community Cloud storage is ephemeral, so
+  a Passport verification link lives for the container's lifetime; the Render blueprint
+  in `render.yaml` attaches a persistent disk for durable links.
 - PayPal MCP adapter is implemented behind an injectable client; REST remains the stable verified path.
 - Webhook endpoint code and local tests are complete; a public HTTPS URL and PayPal dashboard registration are external deployment steps.
 - SQLite persistence requires `TRUSTLOOP_STORE_PATH`; hosted durability depends on the platform's persistent disk.
