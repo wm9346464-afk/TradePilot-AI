@@ -274,3 +274,87 @@ def test_llm_planner_keeps_three_stage_amount_envelope(monkeypatch):
     assert proposal.recommended_ladder[0].name == "Trial milestone"
     assert any("Policy envelope enforced" in warning for warning in proposal.warnings)
 
+
+VISITOR_CONFIG = {
+    "api_url": "https://visitor.example.invalid/v1/chat/completions",
+    "model_name": "visitor-model",
+    "api_key": "sk-visitor-placeholder-0123456789",
+}
+
+
+def test_visitor_config_drives_the_live_planner():
+    """A supplied config is used without touching the deployment environment."""
+
+    run = _risk_ready_run()
+    evidence = next(
+        item.evidence_quote for item in run.risk.issues if item.evidence_quote
+    )
+    calls = []
+
+    def post(url, headers=None, json=None, timeout=None, **kwargs):
+        calls.append((url, headers or {}))
+        return FakeResponse(_proposal_payload([evidence]))
+
+    planner = LLMPlanner(config=VISITOR_CONFIG, post=post)
+    proposal = planner.propose(run, invoice_currency="USD")
+
+    assert proposal.planner_type == "LLM"
+    assert calls and calls[0][0] == VISITOR_CONFIG["api_url"]
+    assert calls[0][1]["Authorization"].endswith(VISITOR_CONFIG["api_key"])
+
+
+def test_visitor_config_must_be_https_and_long_enough():
+    run = _risk_ready_run()
+
+    def post(*args, **kwargs):
+        raise AssertionError("network must not be called for an invalid config")
+
+    plain_http = dict(VISITOR_CONFIG, api_url="http://visitor.example.invalid/v1")
+    short_key = dict(VISITOR_CONFIG, api_key="too-short")
+
+    for config in (plain_http, short_key):
+        planner = LLMPlanner(config=config, post=post)
+        proposal = planner.propose(run, invoice_currency="USD")
+        assert proposal.planner_type == "RULE_BASED"
+        assert any("not configured" in warning for warning in proposal.warnings)
+
+
+def test_visitor_key_never_reaches_audit_passport_or_replay():
+    """The visitor secret must stay in memory, out of every exported artifact."""
+
+    from modules.trustloop.agent.executor import AgentToolExecutor
+    from modules.trustloop.service import build_runtime_service
+
+    service = build_runtime_service(paypal_backend="fake", use_llm=False)
+    planner = LLMPlanner(config=VISITOR_CONFIG)
+    service.agent_planner = planner
+
+    deal = demo_deal_input()
+    run = service.start_case(deal)
+    run = service.review_contract(run.run_id, SAMPLE_CONTRACT)
+    evidence = next(
+        item.evidence_quote for item in run.risk.issues if item.evidence_quote
+    )
+    planner._post = lambda *args, **kwargs: FakeResponse(_proposal_payload([evidence]))
+
+    run = service.propose_plan(run.run_id, invoice_currency="USD")
+    assert run.agent_proposal.planner_type == "LLM"
+
+    for _ in range(3):
+        run = service.approve_plan(run.run_id)
+        run = AgentToolExecutor(service).execute_stage_invoice_tools(run.run_id)
+        run = service.simulate_payment(run.run_id)
+        run = service.advance_after_payment(run.run_id)
+
+    assert run.state.value == "PASSPORT_ISSUED"
+    artifacts = {
+        "passport": json.dumps(run.passport.model_dump(mode="json"), ensure_ascii=False),
+        "audit": json.dumps(
+            [event.model_dump(mode="json") for event in service.get_audit_events(run.run_id)],
+            ensure_ascii=False,
+        ),
+        "replay": json.dumps(service.export_run_bundle(run.run_id), ensure_ascii=False),
+    }
+    for name, blob in artifacts.items():
+        assert VISITOR_CONFIG["api_key"] not in blob, f"api key leaked into {name}"
+        assert "visitor.example.invalid" not in blob, f"endpoint leaked into {name}"

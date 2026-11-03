@@ -81,6 +81,10 @@ The system combines:
 - **Public verification:** a stored Passport can be checked from a public verification view.
 - **Issuer signatures:** configured deployments sign Passport evidence with HMAC-SHA256.
 - **Bilingual Deal Room:** English and Chinese flows cover the primary operator experience.
+- **Bring your own model:** a visitor can paste any OpenAI-compatible endpoint and key
+  in the sidebar. The override lives in that browser session only — it is never
+  written to disk, the audit log or a Trust Passport, and the endpoint must be
+  `https://` or `localhost`.
 
 ---
 
@@ -193,7 +197,8 @@ TRUSTLOOP_USE_LLM=true
 FX_PROVIDER=fixture
 ```
 
-For live structured planning, also configure:
+Visitors can instead paste their own endpoint and key in the Deal Room sidebar, which
+keeps the deployment's own LLM budget untouched. For a deployment-owned key, also configure:
 
 ```env
 LLM_API_KEY=

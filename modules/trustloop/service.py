@@ -1047,6 +1047,7 @@ def build_runtime_service(
     store: RunStore | None = None,
     store_path: str | None = None,
     passport_signing_key: str | None = None,
+    llm_config: dict | None = None,
 ) -> TrustLoopService:
     from .gateways.contracts import ExistingContractReviewGateway
     from .gateways.factory import build_paypal_gateway
@@ -1061,7 +1062,7 @@ def build_runtime_service(
         PolicyConfig(max_invoice_amount_usd=max_invoice_amount),
         fx_provider,
     )
-    planner = LLMPlanner() if use_llm else RuleBasedPlanner()
+    planner = LLMPlanner(config=llm_config) if use_llm else RuleBasedPlanner()
     selected_store_path = (
         store_path
         if store_path is not None

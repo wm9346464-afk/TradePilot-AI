@@ -169,14 +169,21 @@ def get_paypal_config_status(lang: str = "zh") -> Dict[str, object]:
     }
 
 
+def is_llm_config_dict_valid(cfg: dict) -> bool:
+    """Validate any OpenAI-compatible config, including a visitor-supplied one."""
+
+    if not isinstance(cfg, dict):
+        return False
+    key = str(cfg.get("api_key") or "")
+    if is_placeholder(key) or len(key) < 16:
+        return False
+    if not _is_secure_service_url(str(cfg.get("api_url") or "")):
+        return False
+    return not is_placeholder(cfg.get("model_name"))
+
+
 def is_llm_config_valid() -> bool:
-    cfg = get_llm_config()
-    key = cfg["api_key"]
-    if not _is_filled(key) or len(key) < 16:
-        return False
-    if not _is_secure_service_url(cfg["api_url"]):
-        return False
-    return _is_filled(cfg["model_name"])
+    return is_llm_config_dict_valid(get_llm_config())
 
 
 def get_llm_config_status(lang: str = "zh") -> Dict[str, object]:

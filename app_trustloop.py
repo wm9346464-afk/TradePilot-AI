@@ -10,7 +10,11 @@ from uuid import uuid4
 
 import streamlit as st
 
-from modules.config import load_config
+from modules.config import (
+    is_llm_config_dict_valid,
+    is_llm_config_valid,
+    load_config,
+)
 from modules.trustloop.service import build_runtime_service, demo_deal_input
 from modules.trustloop.enums import DealState
 from modules.trustloop.security import (
@@ -29,6 +33,16 @@ def _query_value(name: str) -> str:
     if isinstance(value, (list, tuple)):
         return str(value[0]).strip() if value else ""
     return str(value or "").strip()
+
+
+def _llm_runtime() -> tuple[bool, dict | None]:
+    """A visitor key wins; otherwise the deployment's own configuration applies."""
+
+    visitor_config = st.session_state.get("trustloop_llm_config")
+    if visitor_config:
+        return True, visitor_config
+    env_enabled = os.getenv("TRUSTLOOP_USE_LLM", "true").strip().lower() != "false"
+    return env_enabled, None
 
 
 def _open_deal_room_button() -> None:
@@ -137,9 +151,11 @@ def _render_public_verification(passport_id: str) -> None:
 
 
 def _load_linked_run(run_id: str):
+    use_llm, llm_config = _llm_runtime()
     service = build_runtime_service(
         paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
-        use_llm=os.getenv("TRUSTLOOP_USE_LLM", "true").strip().lower() != "false",
+        use_llm=use_llm,
+        llm_config=llm_config,
     )
     run = service.get_run(run_id)
     return service, run, service.get_audit_events(run_id)
@@ -334,11 +350,54 @@ with st.sidebar:
     st.markdown(f"### {tx('quick_start')}")
     st.markdown(tx("quick_start_steps"))
     st.markdown(f"### {tx('active_mode')}")
+    visitor_llm = st.session_state.get("trustloop_llm_config")
+    if visitor_llm:
+        llm_mode_label = tx(
+            "llm_source_visitor", model=visitor_llm.get("model_name", "")
+        )
+    elif is_llm_config_valid():
+        llm_mode_label = tx("llm_source_env")
+    else:
+        llm_mode_label = tx("llm_source_off")
     st.caption(
         f"PayPal: {os.getenv('TRUSTLOOP_PAYPAL_BACKEND', 'fake')}\n"
-        f"LLM: {'on' if os.getenv('TRUSTLOOP_USE_LLM', 'true').lower() != 'false' else 'off'}\n"
+        f"LLM: {llm_mode_label}\n"
         f"FX: {os.getenv('FX_PROVIDER', 'fixture')}"
     )
+
+    with st.expander(tx("llm_panel_label"), expanded=False):
+        st.caption(tx("llm_privacy"))
+        visitor_url = st.text_input(
+            tx("llm_api_url"),
+            value="https://api.deepseek.com/chat/completions",
+            key="trustloop_llm_url_input",
+        )
+        visitor_model = st.text_input(
+            tx("llm_model"),
+            value="deepseek-chat",
+            key="trustloop_llm_model_input",
+        )
+        visitor_key = st.text_input(
+            tx("llm_api_key"),
+            type="password",
+            key="trustloop_llm_key_input",
+        )
+        apply_col, clear_col = st.columns(2)
+        if apply_col.button(tx("llm_apply"), use_container_width=True):
+            candidate = {
+                "api_url": visitor_url.strip(),
+                "model_name": visitor_model.strip(),
+                "api_key": visitor_key.strip(),
+            }
+            if is_llm_config_dict_valid(candidate):
+                st.session_state["trustloop_llm_config"] = candidate
+                st.success(tx("llm_applied"))
+            else:
+                st.error(tx("llm_invalid"))
+        if clear_col.button(tx("llm_clear"), use_container_width=True):
+            st.session_state.pop("trustloop_llm_config", None)
+            st.session_state["trustloop_llm_key_input"] = ""
+            st.info(tx("llm_cleared"))
 
 st.markdown(
     """
@@ -474,9 +533,11 @@ if run_demo:
         st.stop()
     with st.spinner(tx("review_spinner")):
         try:
+            use_llm, llm_config = _llm_runtime()
             service = build_runtime_service(
                 paypal_backend=os.getenv("TRUSTLOOP_PAYPAL_BACKEND", "fake"),
-                use_llm=os.getenv("TRUSTLOOP_USE_LLM", "true").strip().lower() != "false",
+                use_llm=use_llm,
+                llm_config=llm_config,
             )
             run = service.start_case(demo_deal_input())
             from modules.contract_checker import SAMPLE_CONTRACT

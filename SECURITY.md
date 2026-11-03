@@ -20,6 +20,7 @@
 | PayPal API | 显式启用 PayPal 沙箱 API 并创建/查询发票 | 买家名称、邮箱、金额、币种、合同编号(reference)、支付类型、发票与交易状态 | 当前 session；配置 `TRUSTLOOP_STORE_PATH` 时写入本地 SQLite |
 | 远程信号 API | 配置非占位符 `SIGNAL_API_URL` | 请求头 API Key、信号服务端点 | 不写入数据库 |
 | LLM API | 显式启用 AI 合同审查并调用 | 合同全文（可能包含敏感信息） | 不额外持久化，结果仅保留在当前 session |
+| 访客自带 LLM | 访客在侧栏填入自己的 endpoint 与 key 后点击「使用这个模型」 | 合同全文、访客自填的 endpoint 与 key | 仅存在于该访客的 Process 内存中的 planner 实例；不落盘、不进审计链、不进 Passport / Replay Bundle，也不写日志 |
 
 使用前必须取得数据主体同意，并遵守适用的隐私与数据保护要求。
 
@@ -33,6 +34,8 @@
 - 所有里程碑均为 `PAID` 后才允许签发 Trust Passport。
 - Replay Bundle 只读加载，不会回写或覆盖线上运行数据库。
 - 配置 `TRUSTLOOP_PASSPORT_SIGNING_KEY` 后，Passport 使用 HMAC-SHA256 做发行方签名；验证时必须使用同一服务端密钥。
+- 访客自带的 LLM key 只注入到该会话的 planner 实例，绝不写入 `os.environ`，因此不会跨访客泄漏；
+  端点为访客输入，必须满足 `https://` 或 `localhost`，避免被用作内网探测。
 - 生产环境仍需补充企业身份认证、授权、分布式速率限制、集中式日志、密钥托管和持久化备份。
 
 ## 漏洞报告

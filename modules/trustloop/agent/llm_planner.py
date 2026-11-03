@@ -11,7 +11,11 @@ from decimal import Decimal
 
 import requests
 
-from modules.config import get_llm_config, is_llm_config_valid
+from modules.config import (
+    get_llm_config,
+    is_llm_config_dict_valid,
+    is_llm_config_valid,
+)
 
 from ..models import AgentProposal, DealRun, ProposedMilestone
 from ..money import money
@@ -81,9 +85,27 @@ class LLMPlanner:
         *,
         fallback=None,
         post=requests.post,
+        config: dict | None = None,
     ) -> None:
         self.fallback = fallback or RuleBasedPlanner()
         self._post = post
+        # A visitor may bring their own endpoint. The override lives only inside this
+        # planner instance: it is never written to disk, the audit log or a Passport.
+        self._config_override = (
+            {str(key): str(value) for key, value in config.items()}
+            if config
+            else None
+        )
+
+    def _resolved_config(self) -> dict:
+        if self._config_override is not None:
+            return dict(self._config_override)
+        return get_llm_config()
+
+    def _config_is_usable(self) -> bool:
+        if self._config_override is not None:
+            return is_llm_config_dict_valid(self._config_override)
+        return is_llm_config_valid()
 
     def propose(
         self,
@@ -94,7 +116,7 @@ class LLMPlanner:
         trial_amount: Decimal | int | str = "5000",
         deposit_amount: Decimal | int | str = "10000",
     ) -> AgentProposal:
-        if not is_llm_config_valid():
+        if not self._config_is_usable():
             proposal = self.fallback.propose(
                 run,
                 invoice_currency=invoice_currency,
@@ -154,7 +176,7 @@ class LLMPlanner:
         trial_amount: Decimal | int | str,
         deposit_amount: Decimal | int | str,
     ) -> AgentProposal:
-        cfg = get_llm_config()
+        cfg = self._resolved_config()
         risk = run.risk
         if not risk:
             raise ValueError("Contract risk is required before planning")

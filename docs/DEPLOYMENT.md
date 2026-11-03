@@ -89,6 +89,9 @@ durable.
   `LLM_API_URL`, `LLM_MODEL_NAME`, `LLM_API_KEY`.
 - Without `LLM_API_KEY` the Deal Room still works: the Agent plan panel shows
   `RULE_BASED` and a configuration warning instead of hiding the fallback.
+- Leaving `LLM_API_KEY` empty is the recommended public configuration: a visitor can
+  paste their own OpenAI-compatible endpoint and key in the sidebar, so the hosted
+  demo spends nobody's budget, and the key never leaves that browser session.
 
 ## Optional Webhook service
 
