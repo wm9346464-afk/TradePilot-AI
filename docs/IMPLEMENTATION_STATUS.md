@@ -1,6 +1,6 @@
 # TrustLoop Implementation Status
 
-Last updated: 2026-10-23
+Last updated: 2026-11-03
 
 Legend:
 
@@ -20,14 +20,14 @@ Legend:
 | 5. Multi-currency | DONE | Money, CNY restrictions, zero-decimal currencies, fixture/live FX, UI currency selection and tests implemented. |
 | 6. Contract review | PARTIAL | Rule and AI review, evidence validation and fallback implemented; deeper multi-currency contract parsing remains TODO. |
 | 7. PayPal gateway | PARTIAL | Fake and REST gateways, signed Webhook HTTP endpoint and injectable MCP adapter implemented; live Sandbox create/send/pay/PAID verified. Public Webhook deployment and live MCP verification remain external/TODO. |
-| 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy, fallback and ordered create/send tool execution implemented; broader generic tool-selection loop remains PARTIAL. |
+| 8. Agent core | PARTIAL | Structured AgentProposal, live DeepSeek, tool registry, policy, fallback and ordered create/send tool execution implemented; reformatted evidence is canonicalized instead of discarding the whole proposal, and a live ladder is clamped to the configured three-stage money envelope. Broader generic tool-selection loop remains PARTIAL. |
 | 9. Buyer/seller negotiation | PARTIAL | Bounded deterministic Buyer/Seller Agent negotiation, overlap checks, final terms and audit events implemented; LLM-to-LLM negotiation remains TODO. |
 | 10. Trust Ladder | PARTIAL | Three-stage ladder, per-stage approval and unlock implemented; more risk-driven amount policy remains TODO. |
 | 11. Trust Passport | PARTIAL | JSON, printable HTML, Agent evidence, FX, approvals, settlements, audit hash, replay and HMAC issuer signatures implemented; server-side public verification page added. Deployed verification URL remains external. |
 | 12. UI / Deal Room | PARTIAL | Deal Room, human approvals, Fake/REST paths, replay, language switch, multi-currency selection and resume-by-ID implemented; hosted UI testing remains external. |
 | 13. Security and privacy | DONE | Secret isolation, human approval, amount/currency limits, prompt-injection matrix, rate limiting, public verification, issuer signatures and secret scan implemented. |
 | 14. Session and persistence | DONE | SQLite run/audit/negotiation/invoice index, cross-process resume, replay export/restore and tamper validation implemented. |
-| 15. Testing | PARTIAL | 119 tests pass; crash-point recovery, concurrency conflicts, duplicate-write idempotency, paid-amount matching and replay isolation are covered. Real REST UI payment rehearsal remains a release check. |
+| 15. Testing | PARTIAL | 122 tests pass; crash-point recovery, concurrency conflicts, duplicate-write idempotency, paid-amount matching and replay isolation are covered. Real REST UI payment rehearsal remains a release check. |
 | 16. Online Demo | EXTERNAL | Hosted deployment URL is not yet available. |
 | 17. Documentation | DONE | README, architecture, Sandbox setup, demo script, judge guide and status document added. |
 

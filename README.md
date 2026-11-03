@@ -9,6 +9,21 @@
 
 ---
 
+## Screenshots
+
+![TrustLoop Deal Room](docs/images/deal-room.png)
+
+*Deal Room after a live LLM proposal: the agent writes the risk rationale and the
+stage wording, while the three-stage ladder and its amounts stay inside the
+deployment's policy envelope.*
+
+![Trust Passport and payment evidence](docs/images/passport.png)
+
+*After three verified demo payments: settlement records per milestone, the audit
+chain, and the Trust Passport integrity check.*
+
+---
+
 ## The problem
 
 First-time cross-border trade has a trust problem.
@@ -47,6 +62,10 @@ The agent does not merely recommend an action. After explicit human approval, it
 The system combines:
 
 - **Agent reasoning:** a structured AgentProposal selects a risk-aware payment path.
+- **Live LLM planning with a hard envelope:** DeepSeek proposes the risk posture, the
+  rationale and the stage wording; the number of stages, the amounts and the
+  permitted tools stay fixed by deployment policy, and paraphrased evidence is
+  canonicalized back to the verbatim contract quote.
 - **Restricted tool use:** the agent may request only registered tools.
 - **Buyer/seller negotiation:** bounded agents negotiate inside hard payment and credit constraints.
 - **Human-in-the-loop control:** every financial milestone needs a human approval bound to an exact amount and currency.
@@ -247,7 +266,7 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 
 Current status:
 
-- 119 automated tests passing;
+- 122 automated tests passing;
 - Python compilation checks passing;
 - Fake PayPal end-to-end workflow passing;
 - structured LLM and deterministic fallback tests passing;

@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import sqlite3
 from uuid import uuid4
 
 import streamlit as st
@@ -146,6 +147,45 @@ def _load_linked_run(run_id: str):
 
 def _complete_after_payment(service, run):
     return service.advance_after_payment(run.run_id)
+
+
+def _plan_failure_message(exc: Exception, language: str = "en") -> str:
+    """Explain a planning failure without leaking driver internals."""
+
+    if isinstance(exc, sqlite3.OperationalError) or "unable to open database file" in str(exc):
+        if language == "zh":
+            return (
+                "演示用的本地存储无法打开：把 TRUSTLOOP_STORE_PATH 指向可写路径，"
+                "或留空改用内存演示。"
+            )
+        return (
+            "The demo store could not be opened. Point TRUSTLOOP_STORE_PATH at a "
+            "writable path, or leave it empty to run the in-memory demo."
+        )
+    if language == "zh":
+        return f"信任阶梯未能生成：{type(exc).__name__}: {exc}"
+    return f"The Trust Ladder could not be built: {type(exc).__name__}: {exc}"
+
+
+def _render_stepper(milestones) -> str:
+    """Render the trust ladder as a row of stage cards with explicit status."""
+
+    cards = []
+    for item in milestones:
+        status = item.status.value
+        card_class = {"PAID": "is-paid", "READY": "is-ready"}.get(status, "is-locked")
+        status_class = {"PAID": "tp-paid", "READY": "tp-ready"}.get(status, "tp-locked")
+        cards.append(
+            f'<div class="tp-step {card_class}">'
+            f'<div class="tp-step-head">'
+            f'<span class="tp-step-name">{item.sequence}. {html.escape(item.name)}</span>'
+            f'<span class="tp-status {status_class}">{html.escape(status)}</span>'
+            f"</div>"
+            f'<div class="tp-step-amount">{item.amount.format()}</div>'
+            f'<div class="tp-step-meta">{html.escape(item.unlock_condition)}</div>'
+            f"</div>"
+        )
+    return '<div class="tp-steps">' + "".join(cards) + "</div>"
 
 
 st.set_page_config(
@@ -350,6 +390,23 @@ st.markdown(
         border-left: 3px solid var(--pp-blue); padding: 8px 12px;
         margin-left: 5px; background: #f8fbff;
     }
+    .tp-section {
+        color: var(--pp-blue-dark); font-size: 1.18rem; font-weight: 800;
+        margin: 26px 0 10px 0; letter-spacing: 0.01em;
+    }
+    .tp-steps { display: flex; gap: 12px; margin: 4px 0 10px 0; }
+    .tp-step {
+        flex: 1 1 0; background: var(--pp-panel); border: 1px solid var(--pp-border);
+        border-radius: 14px; padding: 14px 16px;
+        box-shadow: 0 4px 16px rgba(16, 24, 40, 0.05);
+    }
+    .tp-step-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .tp-step-name { font-weight: 700; color: var(--pp-ink); font-size: 0.95rem; }
+    .tp-step-amount { font-size: 1.2rem; font-weight: 800; color: var(--pp-blue-dark); margin-top: 8px; }
+    .tp-step-meta { color: var(--pp-muted); font-size: 0.8rem; margin-top: 6px; line-height: 1.35; }
+    .tp-step.is-paid { border-color: #b7dfc9; box-shadow: inset 0 3px 0 var(--pp-good), 0 4px 16px rgba(16, 24, 40, 0.05); }
+    .tp-step.is-ready { border-color: #b9d8f2; box-shadow: inset 0 3px 0 var(--pp-blue), 0 4px 16px rgba(16, 24, 40, 0.05); }
+    .tp-step.is-locked { opacity: 0.72; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -430,7 +487,7 @@ if run_demo:
                 invoice_currency=selected_invoice_currency,
             )
         except Exception as exc:
-            st.error(tx("plan_error", error=f"{type(exc).__name__}: {exc}"))
+            st.error(_plan_failure_message(exc, language))
             st.stop()
         events = service.get_audit_events(run.run_id)
         st.session_state["trustloop_service"] = service
@@ -471,12 +528,12 @@ backend_name = service.paypal_gateway.backend_name if service else "FAKE"
 
 milestones = run.plan.milestones if run.plan else []
 paid_count = sum(item.status.value == "PAID" for item in milestones)
-progress_value = 1.0 if run.passport else (paid_count / len(milestones) if milestones else 0.0)
 st.markdown(f"### {tx('progress')}")
-st.progress(
-    progress_value,
-    text=tx("progress_text", paid=paid_count, total=len(milestones))
-    + (tx("passport_suffix") if run.passport else ""),
+if milestones:
+    st.markdown(_render_stepper(milestones), unsafe_allow_html=True)
+st.caption(
+    tx("progress_text", paid=paid_count, total=len(milestones))
+    + (tx("passport_suffix") if run.passport else "")
 )
 if run.state == DealState.AWAITING_APPROVAL and run.active_milestone_id:
     next_action = tx("next_approval")
@@ -665,10 +722,20 @@ summary_cols[1].metric(
 summary_cols[2].metric(tx("paid_milestones"), f"{len(paid_milestones)}/{len(run.plan.milestones) if run.plan else 0}")
 summary_cols[3].metric(tx("passport"), passport.passport_id if passport else tx("pending"))
 
+if run.plan and run.plan.milestones:
+    st.markdown(
+        f'<h3 class="tp-section">{html.escape(tx("trust_ladder"))}</h3>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(_render_stepper(run.plan.milestones), unsafe_allow_html=True)
+
 left, center, right = st.columns([1.08, 1.12, 1.0], gap="large")
 
 with left:
-    st.markdown(f'<div class="tp-card"><h3>{html.escape(tx("deal_risk"))}</h3>', unsafe_allow_html=True)
+    st.markdown(
+        f'<h3 class="tp-section">{html.escape(tx("deal_risk"))}</h3>',
+        unsafe_allow_html=True,
+    )
     st.markdown(f"**{tx('buyer')}** {html.escape(run.deal.buyer.name)}")
     st.markdown(f"**{tx('seller')}** {html.escape(run.deal.seller.name)}")
     st.markdown(f"**{tx('product')}** {html.escape(run.deal.product_name)}")
@@ -679,7 +746,6 @@ with left:
         f"({run.risk.high_count if run.risk else 0} high / "
         f"{run.risk.medium_count if run.risk else 0} medium)"
     )
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if run.risk:
         for issue in run.risk.issues[:6]:
@@ -690,7 +756,10 @@ with left:
                     st.code(issue.evidence_quote)
 
 with center:
-    st.markdown(f'<div class="tp-card"><h3>{html.escape(tx("agent_plan"))}</h3>', unsafe_allow_html=True)
+    st.markdown(
+        f'<h3 class="tp-section">{html.escape(tx("agent_plan"))}</h3>',
+        unsafe_allow_html=True,
+    )
     st.markdown(f"**{tx('plan')}** {run.plan.plan_id if run.plan else 'N/A'}")
     st.markdown(f"**{tx('approval')}** {run.plan.approval_reason if run.plan else 'N/A'}")
     st.markdown(f"**{tx('rationale')}** {html.escape(run.plan.rationale if run.plan else '')}")
@@ -741,24 +810,12 @@ with center:
                         + (f" · {tx('accepted')}" if turn.accepted else "")
                     )
                     st.caption(turn.message)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(f'<div class="tp-card"><h3>{html.escape(tx("trust_ladder"))}</h3>', unsafe_allow_html=True)
-    for milestone in run.plan.milestones if run.plan else []:
-        status_class = "tp-paid" if milestone.status.value == "PAID" else "tp-ready" if milestone.status.value == "READY" else "tp-locked"
-        st.markdown(
-            f"""<div class="tp-milestone">
-            <strong>{milestone.sequence}. {html.escape(milestone.name)}</strong>
-            <span style="float:right" class="tp-status {status_class}">{milestone.status.value}</span><br/>
-            <span class="tp-muted">{html.escape(milestone.purpose)}</span><br/>
-            <span class="tp-money">{milestone.amount.format()}</span>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 with right:
-    st.markdown(f'<div class="tp-card"><h3>{html.escape(tx("currency_fx"))}</h3>', unsafe_allow_html=True)
+    st.markdown(
+        f'<h3 class="tp-section">{html.escape(tx("currency_fx"))}</h3>',
+        unsafe_allow_html=True,
+    )
     if run.plan:
         st.markdown(
             f"<span class='tp-money'>{run.deal.contract_value.format()}</span>"
@@ -775,9 +832,11 @@ with right:
         st.markdown(f"**{tx('fx_rate')}** 1 {fx.base_currency} = {fx.rate:.4f} {fx.quote_currency}")
         st.markdown(f"**{tx('fx_observed')}** {fx.observed_at.isoformat()}")
         st.caption(tx("fx_reference"))
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown(f'<div class="tp-card"><h3>{html.escape(tx("payment_evidence"))}</h3>', unsafe_allow_html=True)
+    st.markdown(
+        f'<h3 class="tp-section">{html.escape(tx("payment_evidence"))}</h3>',
+        unsafe_allow_html=True,
+    )
     payment_rows = []
     if passport and passport.settlements:
         payment_rows = [
@@ -814,7 +873,6 @@ with right:
             st.caption(f"Transaction: {transaction_id or 'N/A'}")
     else:
         st.info(tx("no_payment"))
-    st.markdown("</div>", unsafe_allow_html=True)
 
     if passport:
         if service and service.store:
