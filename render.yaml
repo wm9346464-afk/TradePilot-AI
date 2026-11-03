@@ -1,0 +1,33 @@
+# Render blueprint for the public TrustLoop demo.
+#
+# The free plan has no persistent disk, so the SQLite store lives in /tmp: the
+# public Passport verification page works for the life of a container, and is
+# clearly labelled as ephemeral. Attach a paid disk and point
+# TRUSTLOOP_STORE_PATH at it for durable verification links.
+services:
+  - type: web
+    name: tradepilot-trustloop
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app_trustloop.py --server.address 0.0.0.0 --server.port $PORT
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: TRUSTLOOP_PAYPAL_BACKEND
+        value: fake
+      - key: TRUSTLOOP_USE_LLM
+        value: "true"
+      - key: FX_PROVIDER
+        value: fixture
+      - key: TRUSTLOOP_STORE_PATH
+        value: /tmp/trustloop.db
+      - key: TRUSTLOOP_PASSPORT_SIGNING_KEY
+        generateValue: true
+      - key: LLM_API_URL
+        value: https://api.deepseek.com/chat/completions
+      - key: LLM_MODEL_NAME
+        value: deepseek-chat
+      - key: LLM_API_KEY
+        sync: false
