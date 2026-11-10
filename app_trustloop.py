@@ -622,7 +622,9 @@ if run_demo:
             run = service.start_case(demo_deal_input())
             from modules.contract_checker import SAMPLE_CONTRACT
 
-            run = service.review_contract(run.run_id, SAMPLE_CONTRACT, use_ai=False)
+            run = service.review_contract(
+                run.run_id, SAMPLE_CONTRACT, use_ai=False, lang=language
+            )
             run = service.propose_plan(
                 run.run_id,
                 invoice_currency=selected_invoice_currency,
