@@ -122,7 +122,92 @@ def _open_deal_room_button() -> None:
         st.rerun()
 
 
+def _render_stateless_verification(value: str) -> None:
+    """Verify a Passport that travels inside the link, with no store lookup."""
+    from modules.trustloop.passport import verify_passport
+    from modules.trustloop.passport_link import decode_passport_link
+
+    st.markdown(
+        """
+<style>
+.stApp { background: #f5f8fc; }
+.block-container { max-width: 980px; padding-top: 3rem; }
+.verify-hero { background: linear-gradient(135deg, #003087, #0070ba);
+  color: white; border-radius: 18px; padding: 26px 30px; margin-bottom: 20px; }
+.verify-hero h1 { color: white; margin: 0; }
+</style>
+<div class="verify-hero">
+  <h1>Public Trust Passport Verification</h1>
+  <p>Self-contained link: the Passport and its audit hash chain travel inside the URL, so this
+  page re-derives every hash and re-checks the issuer signature without reading any database.</p>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    try:
+        passport, events = decode_passport_link(value)
+    except ValueError:
+        st.error(
+            "This verification link cannot be read. Ask the issuer for a fresh link."
+        )
+        _open_deal_room_button()
+        return
+
+    verification = verify_passport(
+        passport,
+        events,
+        signing_key=os.getenv("TRUSTLOOP_PASSPORT_SIGNING_KEY") or None,
+    )
+    if verification.valid:
+        st.success(
+            "VALID: the Passport carried by this link matches its own audit chain and issuer signature."
+        )
+    else:
+        st.error(f"INVALID: {verification.message}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Risk decision", passport.risk_summary.decision.value)
+    col2.metric("Paid milestones", len(passport.settlements))
+    col3.metric("Human approvals", len(passport.approvals))
+    col4.metric("Mode", passport.mode.value)
+    st.caption(
+        f"Passport {passport.passport_id} · run {passport.run_id} · issued "
+        f"{passport.issued_at.isoformat()} · {len(events)} audit events carried with the link"
+    )
+
+    st.markdown("### Verified payment evidence")
+    for settlement in passport.settlements:
+        st.markdown(
+            f"**{html.escape(settlement.invoice_number or settlement.invoice_id)}** · "
+            f"{settlement.amount.format()} · **{html.escape(settlement.status)}**"
+        )
+        st.caption(f"Transaction: {settlement.transaction_id or 'N/A'}")
+
+    st.markdown("### Agent decision evidence")
+    for action in passport.agent_actions:
+        st.markdown(
+            f"**{html.escape(action.planner_type)}** · {html.escape(action.decision)} · "
+            f"confidence {action.confidence}"
+        )
+
+    with st.expander("Verification checks"):
+        st.json(verification.checks)
+    st.download_button(
+        "Download verified Passport JSON",
+        data=json.dumps(passport.model_dump(mode="json"), indent=2, ensure_ascii=False),
+        file_name=f"{passport.passport_id}.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+    _open_deal_room_button()
+
+
 def _render_public_verification(passport_id: str) -> None:
+    from modules.trustloop.passport_link import is_passport_link
+
+    if is_passport_link(passport_id):
+        _render_stateless_verification(passport_id)
+        return
     st.markdown(
         """
 <style>
@@ -393,7 +478,9 @@ with st.sidebar:
     )
     if st.button(tx("open_verify"), use_container_width=True):
         if passport_lookup_id.strip():
-            st.query_params["verify"] = passport_lookup_id.strip()
+            from modules.trustloop.passport_link import normalise_link_input
+
+            st.query_params["verify"] = normalise_link_input(passport_lookup_id)
             st.rerun()
         else:
             st.warning(tx("enter_passport"))
@@ -1023,12 +1110,32 @@ with right:
         st.info(tx("no_payment"))
 
     if passport:
+        from modules.trustloop.passport_link import encode_passport_link
+
         if service and service.store:
             st.markdown(
                 f"[{tx('public_verify')}](?verify={passport.passport_id})"
             )
         else:
             st.caption(tx("store_required"))
+        if service:
+            try:
+                link_token = encode_passport_link(
+                    passport, service.get_audit_events(run.run_id)
+                )
+            except Exception:
+                link_token = ""
+            if link_token:
+                st.markdown(
+                    f"[{tx('public_verify')} · self-contained]"
+                    f"(?verify={link_token})"
+                )
+                st.caption(
+                    "This link carries the Passport and its audit chain, so it keeps "
+                    "validating after the demo container restarts or the store is wiped."
+                    if language == "en"
+                    else "该链接自带护照与审计链，容器重启或数据库清空后仍可继续验证。"
+                )
         verification = service.verify_trust_passport(run.run_id) if service else None
         if verification and verification.valid:
             st.success(tx("verified"))
