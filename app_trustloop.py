@@ -280,7 +280,7 @@ st.set_page_config(
     page_title="TradePilot TrustLoop",
     page_icon="TP",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 load_config()
@@ -437,7 +437,7 @@ with st.sidebar:
         f"FX: {os.getenv('FX_PROVIDER', 'fixture')}"
     )
 
-    with st.expander(tx("llm_panel_label"), expanded=False):
+    with st.expander(tx("llm_panel_label"), expanded=True):
         st.caption(tx("llm_privacy"))
         visitor_url = st.text_input(
             tx("llm_api_url"),
@@ -693,6 +693,11 @@ elif run.state == DealState.PASSPORT_ISSUED:
     next_action = tx("next_complete")
 else:
     next_action = tx("next_continue")
+if not (
+    st.session_state.get("trustloop_llm_config") or is_llm_config_valid()
+):
+    st.caption(tx("llm_cta"))
+
 st.info(next_action)
 
 if run.state == DealState.AWAITING_APPROVAL and run.plan and service:

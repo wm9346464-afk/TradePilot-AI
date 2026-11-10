@@ -128,7 +128,8 @@ class LLMPlanner:
                 update={
                     "warnings": [
                         *proposal.warnings,
-                        "LLM is not configured; deterministic planner was used.",
+                        "The model is not configured, so the deterministic planner was used. "
+                        "Paste an OpenAI-compatible key in the sidebar to let a live model plan this deal.",
                     ]
                 }
             )
