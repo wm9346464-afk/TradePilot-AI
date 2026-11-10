@@ -71,6 +71,7 @@ def _render_evidence_grid(
     height: int,
     quick_filter: str = "",
     status_column: str | None = None,
+    wrap_key: str = "",
 ) -> None:
     """Render one AG Grid table, degrading to a plain dataframe without the component."""
 
@@ -92,8 +93,6 @@ def _render_evidence_grid(
         }
         if status_column and field == status_column:
             options["cellStyle"] = {"fontWeight": "700"}
-        elif field in {"stage", "sequence"}:
-            options["pinned"] = "left"
         builder.configure_column(field, **options)
 
     AgGrid(
@@ -103,7 +102,7 @@ def _render_evidence_grid(
         theme="streamlit",
         fit_columns_on_grid_load=False,
         update_mode=GridUpdateMode.NO_UPDATE,
-        key=f"evidence-{status_column or 'grid'}-{len(frame)}",
+        key=f"evidence-{wrap_key or 'grid'}",
     )
 
 
@@ -1084,9 +1083,10 @@ st.markdown(f"**{tx('console_milestones')}**")
 _render_evidence_grid(
     to_frame(milestone_rows(run), MILESTONE_COLUMNS),
     MILESTONE_COLUMNS,
-    height=182,
+    height=196,
     quick_filter=_console_query,
     status_column="status",
+    wrap_key="milestones",
 )
 
 st.markdown(f"**{tx('console_events')}**")
@@ -1095,6 +1095,7 @@ _render_evidence_grid(
     EVENT_COLUMNS,
     height=360,
     quick_filter=_console_query,
+    wrap_key="events",
 )
 
 if run.approvals:
