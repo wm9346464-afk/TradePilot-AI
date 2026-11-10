@@ -8,6 +8,9 @@ This module carries the Passport and its audit chain inside the link instead.
 The verifier re-derives every hash and re-checks the issuer signature, so the
 page still proves itself without any database — and it never has to trust the
 server that handed the link over.
+
+The payload is deflated before base64 so a full demo run fits in a few kilobytes
+(22 audit events: ~26 KB of JSON, ~2.4 KB as a link).
 """
 
 from __future__ import annotations
@@ -15,12 +18,14 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import zlib
 
 from .audit import AuditEvent
 from .models import TrustPassport
 
 PREFIX = "pl_"
-MAX_ENCODED_LENGTH = 400_000
+MAX_ENCODED_LENGTH = 200_000
+MAX_INFLATED_BYTES = 4_000_000
 
 
 def encode_passport_link(passport: TrustPassport, events: list[AuditEvent]) -> str:
@@ -30,7 +35,8 @@ def encode_passport_link(passport: TrustPassport, events: list[AuditEvent]) -> s
         "events": [event.model_dump(mode="json") for event in events],
     }
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    token = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    packed = zlib.compress(raw, 9)
+    token = base64.urlsafe_b64encode(packed).decode("ascii").rstrip("=")
     return PREFIX + token
 
 
@@ -62,10 +68,14 @@ def decode_passport_link(value: str) -> tuple[TrustPassport, list[AuditEvent]]:
         raise ValueError("payload too large")
     padding = "=" * (-len(body) % 4)
     try:
-        raw = base64.urlsafe_b64decode(body + padding)
+        packed = base64.urlsafe_b64decode(body + padding)
+        inflater = zlib.decompressobj()
+        raw = inflater.decompress(packed, MAX_INFLATED_BYTES)
+        if inflater.unconsumed_tail:
+            raise ValueError("payload too large")
         payload = json.loads(raw.decode("utf-8"))
         passport = TrustPassport.model_validate(payload["passport"])
         events = [AuditEvent.model_validate(item) for item in payload["events"]]
-    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, zlib.error) as error:
         raise ValueError("passport link is not readable") from error
     return passport, events
